@@ -4,7 +4,7 @@ from datetime import datetime
 from io import BytesIO
 from pathlib import Path
 from typing import Optional
-
+import base64
 import pandas as pd
 import streamlit as st
 import subprocess
@@ -21,12 +21,96 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 # Rutas base
 # =============================
 BASE_DIR = Path(__file__).resolve().parent.parent
+ASSETS_DIR = BASE_DIR / "app" / "assets"  # app/assets/logo_bdata.png, favicon.png
 DATA_DIR = BASE_DIR / "data"
 SOLVER_PATH = BASE_DIR / "optim" / "solver.py"
 
-st.set_page_config(page_title="Optimizador de Fertilización", layout="wide")
-st.title("🌱 Optimizador de Fertilización")
-st.write("Sube tus archivos o usa los de ejemplo para calcular el plan más económico.")
+# Page config (reemplaza tu set_page_config por este)
+st.set_page_config(
+    page_title="Optimizador de Fertilización | Boost Data",
+    page_icon=str(ASSETS_DIR / "favicon.png"),
+    layout="wide",
+)
+
+# CSS: tema suave + ocultar footer/hamburguesa default y dar estilo a headers / tarjetas
+CUSTOM_CSS = f"""
+<style>
+/* tipografía base */
+html, body, [class*="css"] {{
+  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji","Segoe UI Emoji","Segoe UI Symbol" !important;
+}}
+/* header container */
+.bdata-header {{
+  display:flex; align-items:center; gap:16px; margin-bottom: 4px;
+}}
+.bdata-claim {{
+  font-size: 14px; color:#5f6c72; margin-top:2px;
+}}
+/* cards suaves */
+.block-container {{
+  padding-top: 1.2rem;
+}}
+/* esconder footer streamlit y el menú */
+footer {{ visibility: hidden; }}
+#MainMenu {{ visibility: hidden; }}
+
+/* métricas más elegantes */
+div[data-testid="stMetricValue"] {{
+  font-weight: 800;
+}}
+/* botones primarios un poco más marcados */
+.stButton>button {{
+  border-radius: 10px;
+  padding: 0.55rem 0.9rem;
+  font-weight: 600;
+}}
+/* subtítulos de secciones */
+h3, h4 {{
+  scroll-margin-top: 72px;
+}}
+/* línea divisoria sutil */
+.bdata-divider {{
+  height:1px; background:linear-gradient(to right, #e9eef1 0%, #e9eef1 60%, transparent 100%);
+  margin: 6px 0 14px 0;
+}}
+/* pie de página propio */
+.bdata-footer {{
+  margin-top: 24px; padding: 12px 0 40px 0; color:#6b7b83; font-size: 12px;
+  border-top: 1px solid #eef2f4;
+}}
+.bdata-badge {{
+  display:inline-flex; align-items:center; gap:6px;
+  background:#eef7f0; color:#2f7a3e; border-radius: 16px; padding:4px 10px; font-size:12px; font-weight:600;
+}}
+</style>
+"""
+
+st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
+
+# HEADER con logo + título
+c1, c2 = st.columns([1, 6], gap="small")
+with c1:
+    try:
+        st.image(str(ASSETS_DIR / "logo_bdata.png"), use_container_width=True)
+    except Exception:
+        st.write("")  # por si no está el logo aún
+with c2:
+    st.title("Optimizador de Fertilización")
+    st.markdown('<div class="bdata-claim">Planifica mezclas óptimas por potrero, cumpliendo N–P–K al menor costo.</div>', unsafe_allow_html=True)
+st.markdown('<div class="bdata-divider"></div>', unsafe_allow_html=True)
+
+# helper: toast seguro (Streamlit 1.38 lo soporta)
+def toast_ok(msg: str):
+    try:
+        st.toast(msg, icon="✅")
+    except Exception:
+        st.success(msg)
+
+def toast_warn(msg: str):
+    try:
+        st.toast(msg, icon="⚠️")
+    except Exception:
+        st.warning(msg)
 
 
 # =============================
@@ -222,58 +306,108 @@ with colB:
 # =============================
 # Ejecutar solver (por escenario)
 # =============================
-def run_solver(nmax: int, mixmax: int, tol_pct: float, costoap: int, label: str):
-    """Ejecuta solver.py con parámetros y archivos de salida etiquetados."""
-    out_csv = DATA_DIR / f"resultados_{label}.csv"
-    out_txt = DATA_DIR / f"_resumen_{label}.txt"
-    result = subprocess.run([
-        sys.executable, str(SOLVER_PATH),
-        "--nmax", str(nmax),
-        "--mixmax", str(mixmax),
-        "--tol", str(tol_pct / 100.0),
-        "--costoap", str(costoap),
-        "--out_csv", str(out_csv),
-        "--out_txt", str(out_txt)
-    ], capture_output=True, text=True)
-    return result, out_csv, out_txt
+
+def run_solver(nmax: int, mixmax: int, tol_pct: float, costo_ap_ton: int, tag: str):
+    """
+    Ejecuta el solver con un TAG (A/B) y valida que existan las salidas esperadas.
+    Retorna: (proc, csv_path, txt_path, ok)
+    """
+    # Archivos de salida esperados con sufijo por TAG (A / B)
+    csv_path = DATA_DIR / f"resultados_dosis_{tag}.csv"
+    txt_path = DATA_DIR / f"_resumen_{tag}.txt"
+
+    # (Opcional) borra salidas viejas para no confundir la validación
+    for p in (csv_path, txt_path):
+        if p.exists():
+            try:
+                p.unlink()
+            except Exception:
+                pass
+
+    # Lanza el solver con los parámetros
+    proc = subprocess.run(
+        [
+            sys.executable, str(SOLVER_PATH),
+            "--nmax",   str(nmax),
+            "--mixmax", str(mixmax),
+            "--tol",    str(tol_pct/100.0),
+            "--costoap",str(costo_ap_ton),
+            "--tag",    tag,                      # ⚠️ el solver debe aceptar --tag
+        ],
+        capture_output=True,
+        text=True
+    )
+
+    # Éxito: returncode OK y archivos de salida presentes
+    ok = (proc.returncode == 0) and csv_path.exists() and txt_path.exists()
+    return proc, csv_path, txt_path, ok
 
 
 # =============================
-# Botón: ejecutar A/B (con textos)
+# Botón: ejecutar A/B (con textos + toasts + delta)
+# === REEMPLAZA TU BLOQUE POR ESTE ===
 # =============================
 if st.button("🚜 Ejecutar escenarios A y B", key="run_ab"):
     with st.spinner("Ejecutando optimizaciones A y B..."):
-        resA, csvA, txtA = run_solver(nA, mixA, tolA, 0, "A")
-        resB, csvB, txtB = run_solver(nB, mixB, tolB, 0, "B")
-    st.success("Optimización completada ✅")
+        resA, csvA, txtA, okA = run_solver(nA, mixA, tolA, 0, "A")
+        resB, csvB, txtB, okB = run_solver(nB, mixB, tolB, 0, "B")
 
-    costoA = costo_total_desde_txt(txtA)
-    costoB = costo_total_desde_txt(txtB)
-    dif_cost = costoB - costoA
+    # Mensajes según resultado real
+    if not okA and not okB:
+        st.warning("Ninguno de los escenarios terminó bien. Revisa límites y datos.")
+        st.caption("Logs A:"); st.code(resA.stderr or resA.stdout or "sin salida")
+        st.caption("Logs B:"); st.code(resB.stderr or resB.stdout or "sin salida")
+        st.stop()
+    elif not okA:
+        st.warning("El escenario A falló. Revisemos límites y datos.")
+        st.caption("Logs A:"); st.code(resA.stderr or resA.stdout or "sin salida")
+    elif not okB:
+        st.warning("El escenario B falló. Revisemos límites y datos.")
+        st.caption("Logs B:"); st.code(resB.stderr or resB.stdout or "sin salida")
+    else:
+        st.success("Optimización completada ✅")
 
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        st.metric("Costo A", formato_clp(costoA))
-    with c2:
-        st.metric("Costo B", formato_clp(costoB))
-    with c3:
-        st.metric("Diferencia (B - A)", formato_clp(dif_cost))
+    # A partir de aquí, carga lo que SÍ exista (A y/o B) sin reventar
+    costoA = costoB = None
+    if okA:
+        costoA = costo_total_desde_txt(txtA)
+    if okB:
+        costoB = costo_total_desde_txt(txtB)
 
-    st.markdown(
-        f"""
-**¿Qué significa esto?**  
-- **Escenario A** te sale **{formato_clp(costoA)}** y **Escenario B** **{formato_clp(costoB)}**.  
-- La diferencia es **{formato_clp(dif_cost)}** — {'sube' if dif_cost>0 else 'baja' if dif_cost<0 else 'no cambia'} con B.  
-Si es **positivo**, B es **más caro**; si es **negativo**, B es **más barato**.
-        """
-    )
+    # Métricas: solo muestra lo que tengas
+    cols = []
+    if costoA is not None: cols.append(("Costo A", costoA))
+    if costoB is not None: cols.append(("Costo B", costoB))
+    if costoA is not None and costoB is not None:
+        dif_cost = costoB - costoA
+        cols.append(("Diferencia (B - A)", dif_cost))
 
-    if csvA.exists() and csvB.exists():
-        dfA = pd.read_csv(csvA)
-        dfB = pd.read_csv(csvB)
-        dfA["escenario"] = "A"
-        dfB["escenario"] = "B"
+    if cols:
+        c = st.columns(len(cols))
+        for i, (label, val) in enumerate(cols):
+            st.metric(label, formato_clp(val))
+
+    # Texto resumen (solo si hay ambos)
+    if (costoA is not None) and (costoB is not None):
+        dif_cost = costoB - costoA
+        st.markdown(
+            f"""
+**¿Cómo leerlo?**  
+- **A:** {formato_clp(costoA)}  ·  **B:** {formato_clp(costoB)}  
+- La diferencia (**B − A**) es **{formato_clp(dif_cost)}** → {'sube' if dif_cost>0 else 'baja' if dif_cost<0 else 'no cambia'} con B.  
+Si está **en positivo**, B es **más caro**; si está **en negativo**, B es **más barato**.
+            """
+        )
+
+    # Tablas / gráficos comparativos, solo si existen ambos CSV
+    if (okA and okB):
+        dfA = pd.read_csv(csvA); dfA["escenario"] = "A"
+        dfB = pd.read_csv(csvB); dfB["escenario"] = "B"
         dfAB = pd.concat([dfA, dfB], ignore_index=True)
+        # … (resto de tus gráficos/validaciones que ya tenías)
+
+
+
 
         # 1) Tabla de dosis A vs B
         st.subheader("📊 Comparación de dosis (A vs B)")
@@ -356,6 +490,96 @@ Así ves **dónde está ajustando la mezcla** el modelo cuando cambias parámetr
                 """
             )
 
+        # =============================
+        # Resumen en chileno por potrero (A vs B)
+        # =============================
+        def render_resumen_chileno_ab():
+            if "dfAB" not in st.session_state:
+                return
+            dfAB = st.session_state["dfAB"]
+            if dfAB is None or dfAB.empty:
+                return
+
+            st.markdown("### 🧾 Resumen para terreno (en chileno)")
+
+            # Resumen de costos si los tenemos guardados
+            costoA = st.session_state.get("costoA")
+            costoB = st.session_state.get("costoB")
+            if isinstance(costoA, (int, float)) and isinstance(costoB, (int, float)):
+                dif_cost = (costoB - costoA)
+                st.markdown(
+                    f"- **Costo A**: {formato_clp(costoA)} | **Costo B**: {formato_clp(costoB)} | "
+                    f"**Diferencia (B − A)**: {formato_clp(dif_cost)} "
+                    f"→ {'B más caro' if dif_cost>0 else 'B más barato' if dif_cost<0 else 'igual'}."
+                )
+
+            # Total kg/ha por potrero y escenario
+            tot = (
+                dfAB.groupby(["potrero", "escenario"])["kg_ha"]
+                .sum()
+                .unstack(fill_value=0)
+            )
+            if "A" not in tot.columns:
+                tot["A"] = 0.0
+            if "B" not in tot.columns:
+                tot["B"] = 0.0
+            tot["dif_BA"] = tot["B"] - tot["A"]
+
+            # Para cada potrero: cambios de productos (top 3 por magnitud)
+            for potrero, sub in dfAB.groupby("potrero", sort=False):
+                matriz = (
+                    sub.pivot_table(
+                        index="producto", columns="escenario",
+                        values="kg_ha", aggfunc="sum", fill_value=0.0
+                    )
+                )
+                if "A" not in matriz.columns:
+                    matriz["A"] = 0.0
+                if "B" not in matriz.columns:
+                    matriz["B"] = 0.0
+                matriz["dif_BA"] = matriz["B"] - matriz["A"]
+
+                # Orden por cambio absoluto y tomar los top 3 “movedores”
+                orden = matriz["dif_BA"].abs().sort_values(ascending=False).index
+                movers = matriz.loc[orden].head(3)
+
+                suben = [f"{p}: +{v:.1f} kg/ha" for p, v in movers[movers["dif_BA"] > 0]["dif_BA"].items()]
+                bajan = [f"{p}: {v:.1f} kg/ha" for p, v in movers[movers["dif_BA"] < 0]["dif_BA"].items()]
+
+                totalA = float(tot.loc[potrero, "A"]) if potrero in tot.index else 0.0
+                totalB = float(tot.loc[potrero, "B"]) if potrero in tot.index else 0.0
+                dtotal = float(tot.loc[potrero, "dif_BA"]) if potrero in tot.index else 0.0
+
+                etiqueta = (
+                    "más mezcla total en B" if dtotal > 0
+                    else "menos mezcla total en B" if dtotal < 0
+                    else "misma mezcla total"
+                )
+
+                with st.expander(
+                    f"**{potrero}** — total A: {totalA:.1f} kg/ha · total B: {totalB:.1f} kg/ha "
+                    f"({('+' if dtotal>0 else '')}{dtotal:.1f}) → {etiqueta}",
+                    expanded=False
+                ):
+                    if suben:
+                        st.markdown("- **Sube**: " + ", ".join(suben))
+                    if bajan:
+                        st.markdown("- **Baja**: " + ", ".join(bajan))
+                    if not suben and not bajan:
+                        st.markdown("- Sin cambios relevantes de productos.")
+
+                    # Tiro un tip corto, útil para conversación con el agricultor:
+                    tip = (
+                        "Si el potrero anda justo en N/P/K, ojo con no pasarse por arriba en mezcla total. "
+                        "Si se ve **subcumplimiento**, mueve dosis desde los que **suben** hacia los productos que faltan, "
+                        "manteniendo el tope de mezcla (kg/ha) que aguanta tu maquinaria."
+                    )
+                    st.caption(tip)
+
+        # === Llamar al render (ponlo debajo de tus gráficos/tablas A/B)
+        render_resumen_chileno_ab()
+
+
         # 6) Descarga CSV
         st.download_button(
             "📥 Descargar comparación A/B (CSV)",
@@ -367,11 +591,11 @@ Así ves **dónde está ajustando la mezcla** el modelo cuando cambias parámetr
 
         # 7) Reporte “en chileno” (Markdown)
         resumen_txt = f"""
-# 🧾 Informe en Chileno – Comparación de Escenarios A y B
+# 🧾 Informe – Comparación de Escenarios A y B
 
 ## 💰 Costo total
-En plata, el escenario A te sale **{formato_clp(costoA)}**,
-mientras que el escenario B te sale **{formato_clp(costoB)}**.
+En plata, el escenario A cuesta **{formato_clp(costoA)}**,
+mientras que el escenario B cuesta **{formato_clp(costoB)}**.
 La diferencia es de **{formato_clp(dif_cost)}**,
 así que el escenario B es **{'más caro 💸' if dif_cost>0 else 'más barato 💰' if dif_cost<0 else 'igual de caro 🤝'}**.
 
@@ -385,7 +609,7 @@ el producto que más **aumenta** con B vs A es **{p_up if len(diff_prod)>0 else 
 y el que más **disminuye** es **{p_dn if len(diff_prod)>0 else '—'}** ({diff_prod.min():.1f} kg/ha).
 
 ## 🧠 Interpretación
-Si el escenario B te salió más caro, probablemente apretaste una **restricción**
+Si el escenario B te cuesta más caro, probablemente apretaste una **restricción**
 (por ejemplo **menos N máximo** o **menos mezcla por pasada**).
 El modelo entonces se ve obligado a usar **productos más concentrados o caros**.
 
@@ -393,8 +617,8 @@ Si B es más barato, quizá diste más **holgura** (tolerancia mayor, N máximo 
 y encontró una **mezcla más eficiente**.
 
 En simple:
-- Si buscai **eficiencia económica**, fíjate dónde B gasta menos sin perder nutrientes.
-- Si buscai **techo productivo**, mira dónde B sube dosis o cambia mezcla.
+- Si buscas **eficiencia económica**, fíjate dónde B gasta menos sin perder nutrientes.
+- Si buscas **techo productivo**, mira dónde B sube dosis o cambia mezcla.
 
 ---
 _Desarrollado por BData 🌾 – herramienta demo con PuLP + Streamlit_
