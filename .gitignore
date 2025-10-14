@@ -1,0 +1,17 @@
+# Python / venv
+.venv/
+__pycache__/
+*.pyc
+
+# Streamlit cache
+.streamlit/
+
+# Datos locales
+data/*.csv
+data/*.txt
+data/*.md
+data/*._*
+!data/logo-bdata.png
+
+# VSCode
+.vscode/
