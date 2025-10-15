@@ -1,3 +1,27 @@
+
+Inicializar repositorio y primer commit
+**Windows (PowerShell):**
+```powershell
+cd <carpeta-del-proyecto>
+git init
+git add .
+git commit -m "init: Streamlit optimizer + manual + PDF report"
+git branch -M main
+
+Crear repo en GitHub y conectar remoto
+git remote add origin git@github.com:<tu-usuario>/bdata-fert-opt.git
+git push -u origin main
+
+Con HTTPS:
+
+git remote add origin https://github.com/<tu-usuario>/bdata-fert-opt.git
+git push -u origin main
+
+git tag -a v0.1.0 -m "Primera demo usable"
+git push origin v0.1.0
+
+
+
 Contexto técnico – estado al 14/10/2025
 Objetivo
 

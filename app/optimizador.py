@@ -16,7 +16,9 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import cm
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image as RLImage
 
-# === utilidades para leer CSVs locales si existen ===
+# =============================
+# Utilidades para CSV locales
+# =============================
 def read_csv_flexible(path: Path) -> pd.DataFrame:
     try:
         return pd.read_csv(path, sep=None, engine="python", encoding="utf-8-sig")
@@ -25,7 +27,6 @@ def read_csv_flexible(path: Path) -> pd.DataFrame:
         raise
 
 def exists_local_inputs() -> dict:
-    """Detecta inputs locales en data/ y devuelve rutas existentes."""
     files = {
         "potreros": DATA_DIR / "potreros.csv",
         "requerimientos": DATA_DIR / "requerimientos.csv",
@@ -37,85 +38,274 @@ def exists_local_inputs() -> dict:
 # Rutas base
 # =============================
 BASE_DIR = Path(__file__).resolve().parent.parent
-ASSETS_DIR = BASE_DIR / "app" / "assets"  # app/assets/logo_bdata.png, favicon.png
+ASSETS_DIR = BASE_DIR / "app" / "assets"
 DATA_DIR = BASE_DIR / "data"
 SOLVER_PATH = BASE_DIR / "optim" / "solver.py"
 
-# Page config (reemplaza tu set_page_config por este)
+# =============================
+# Página
+# =============================
 st.set_page_config(
     page_title="Optimizador de Fertilización | Boost Data",
     page_icon=str(ASSETS_DIR / "favicon.png"),
     layout="wide",
 )
 
-# CSS: tema suave + ocultar footer/hamburguesa default y dar estilo a headers / tarjetas
-CUSTOM_CSS = f"""
-<style>
-/* tipografía base */
-html, body, [class*="css"] {{
-  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji","Segoe UI Emoji","Segoe UI Symbol" !important;
-}}
-/* header container */
-.bdata-header {{
-  display:flex; align-items:center; gap:16px; margin-bottom: 4px;
-}}
-.bdata-claim {{
-  font-size: 14px; color:#5f6c72; margin-top:2px;
-}}
-/* cards suaves */
-.block-container {{
-  padding-top: 1.2rem;
-}}
-/* esconder footer streamlit y el menú */
-footer {{ visibility: hidden; }}
-#MainMenu {{ visibility: hidden; }}
+# Estado persistente
+if "last_run" not in st.session_state:
+    st.session_state["last_run"] = {
+        "okA": False, "okB": False,
+        "csvA": None, "txtA": None,
+        "csvB": None, "txtB": None,
+        "costoA": None, "costoB": None,
+        "mixA": None, "mixB": None,
+        "nA": None, "nB": None,
+        "tolA": None, "tolB": None,
+    }
+if "already_rendered" not in st.session_state:
+    # evita duplicados entre el render inmediato post-ejecución y el render persistente
+    st.session_state["already_rendered"] = False
 
-/* métricas más elegantes */
-div[data-testid="stMetricValue"] {{
-  font-weight: 800;
-}}
-/* botones primarios un poco más marcados */
-.stButton>button {{
-  border-radius: 10px;
-  padding: 0.55rem 0.9rem;
-  font-weight: 600;
-}}
-/* subtítulos de secciones */
-h3, h4 {{
-  scroll-margin-top: 72px;
-}}
-/* línea divisoria sutil */
-.bdata-divider {{
-  height:1px; background:linear-gradient(to right, #e9eef1 0%, #e9eef1 60%, transparent 100%);
-  margin: 6px 0 14px 0;
-}}
-/* pie de página propio */
-.bdata-footer {{
-  margin-top: 24px; padding: 12px 0 40px 0; color:#6b7b83; font-size: 12px;
-  border-top: 1px solid #eef2f4;
-}}
-.bdata-badge {{
-  display:inline-flex; align-items:center; gap:6px;
-  background:#eef7f0; color:#2f7a3e; border-radius: 16px; padding:4px 10px; font-size:12px; font-weight:600;
-}}
+# --- Sentinelas para evitar NameError en reruns
+okA = okB = False
+csvA = txtA = csvB = txtB = None
+costoA = costoB = None
+
+# =============================
+# CSS
+# =============================
+CUSTOM_CSS = """
+<style>
+html, body, [class*="css"] {
+  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji","Segoe UI Emoji","Segoe UI Symbol" !important;
+}
+.bdata-header { display:flex; align-items:center; gap:16px; margin-bottom: 4px; }
+.bdata-claim { font-size: 14px; color:#5f6c72; margin-top:2px; }
+.block-container { padding-top: 1.2rem; }
+footer { visibility: hidden; }
+#MainMenu { visibility: hidden; }
+div[data-testid="stMetricValue"] { font-weight: 800; }
+.stButton>button { border-radius: 10px; padding: 0.55rem 0.9rem; font-weight: 600; }
+h3, h4 { scroll-margin-top: 72px; }
+.bdata-divider { height:1px; background:linear-gradient(to right, #e9eef1 0%, #e9eef1 60%, transparent 100%); margin: 6px 0 14px 0; }
+.bdata-footer { margin-top: 24px; padding: 12px 0 40px 0; color:#6b7b83; font-size: 12px; border-top: 1px solid #eef2f4; }
+.bdata-badge { display:inline-flex; align-items:center; gap:6px; background:#eef7f0; color:#2f7a3e; border-radius: 16px; padding:4px 10px; font-size:12px; font-weight:600; }
 </style>
 """
-
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
-# HEADER con logo + título
+# =============================
+# Modal Manual (flotante)
+# =============================
+from textwrap import dedent
+MANUAL_HTML = dedent("""\
+<style>
+.bdata-help-btn{position:fixed;bottom:24px;right:24px;background:#157347;color:#fff;border-radius:40px;padding:10px 18px;font-weight:600;cursor:pointer;box-shadow:0 3px 8px rgba(0,0,0,.25);z-index:9999;transition:background .2s}
+.bdata-help-btn:hover{background:#0b5e2b}
+.bdata-modal{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:10000}
+.bdata-modal-content{background:#fff;border-radius:16px;max-width:760px;width:92%;max-height:84%;overflow-y:auto;padding:24px 20px;box-shadow:0 4px 20px rgba(0,0,0,.3);position:relative}
+.bdata-close{position:absolute;top:8px;right:12px;font-size:22px;font-weight:700;color:#444;cursor:pointer}
+#manualToggle:checked ~ .bdata-modal{display:flex}
+.bdata-chip{display:inline-block;background:#eef7f0;color:#196c39;padding:2px 8px;border-radius:12px;font-weight:700;font-size:12px;margin-left:6px}
+.bdata-note{font-size:12px;color:#666}
+.bdata-list-tight li{margin:2px 0}
+details{background:#fafafa;border:1px solid #eee;border-radius:10px;padding:10px 12px;margin:8px 0}
+details>summary{cursor:pointer;font-weight:700}
+table{border-collapse:collapse;width:100%}
+th,td{border:1px solid #e6e6e6;padding:6px 8px;font-size:13px}
+th{background:#f4fbf6;color:#0b5e2b;text-align:left}
+</style>
+
+<input type="checkbox" id="manualToggle" hidden>
+<label for="manualToggle" class="bdata-help-btn">📖 Ver manual</label>
+
+<div class="bdata-modal">
+<label for="manualToggle" style="position:absolute;inset:0;"></label>
+<div class="bdata-modal-content" onclick="event.stopPropagation()">
+<label for="manualToggle" class="bdata-close" title="Cerrar">&times;</label>
+
+<h3>📘 Manual rápido para el agricultor <span class="bdata-chip">Resumen</span></h3>
+
+<p><b>¿Qué hace?</b> Calcula la mezcla óptima de fertilizantes por potrero para cumplir N–P–K al menor costo.</p>
+
+<h4>🪴 Pasos</h4>
+<ol class="bdata-list-tight">
+  <li><b>Dibuja</b> tus potreros en <b>🗺️ Mapa de potreros</b> y pulsa <b>“Calcular áreas y crear potreros.csv”</b>.</li>
+  <li><b>Carga</b> <i>productos.csv</i> y <i>requerimientos.csv</i>.</li>
+  <li><b>Ajusta</b> <i>N máx</i>, <i>Mezcla máx</i> y <i>Tolerancia</i> para A y B.</li>
+  <li><b>Ejecuta 🚜</b> y compara costos, tablas y gráficos.</li>
+</ol>
+
+<details><summary>📂 Archivos que usa (formato breve)</summary>
+  <table>
+    <tr><th>Archivo</th><th>Columnas obligatorias</th><th>Ejemplo</th></tr>
+    <tr><td><b>potreros.csv</b></td><td><code>potrero, cultivo, superficie_ha</code></td><td>Potrero_1, Trigo, 12.5</td></tr>
+    <tr><td><b>productos.csv</b></td><td><code>producto, N_pct, P2O5_pct, K2O_pct, precio_CLP_ton, dosis_min_kg_ha, dosis_max_kg_ha</code></td><td>Urea, 46, 0, 0, 450000, 0, 300</td></tr>
+    <tr><td><b>requerimientos.csv</b></td><td><code>cultivo, N_req_kg_ha, P2O5_req_kg_ha, K2O_req_kg_ha</code></td><td>Trigo, 160, 70, 0</td></tr>
+  </table>
+  <p class="bdata-note">El <b>potreros.csv</b> se genera solo desde el mapa; no necesitas subirlo.</p>
+</details>
+
+<details><summary>⚙️ Parámetros (qué significan)</summary>
+  <ul class="bdata-list-tight">
+    <li><b>N máx (kg/ha):</b> tope de N total por hectárea.</li>
+    <li><b>Mezcla máx (kg/ha):</b> límite de kilos aplicables por pasada (capacidad de equipo).</li>
+    <li><b>Tolerancia (%):</b> margen para aceptar leve subcumplimiento (2% ⇒ se pide 98%).</li>
+  </ul>
+</details>
+
+<details><summary>🧠 Glosario express</summary>
+  <ul class="bdata-list-tight">
+    <li><b>Infactible/Infeasible:</b> no existe combinación que cumpla nutrientes y límites.</li>
+    <li><b>Dosis mín/máx:</b> rango permitido por producto (kg/ha).</li>
+    <li><b>Requerimiento efectivo:</b> requerimiento × (1 − tolerancia).</li>
+  </ul>
+</details>
+<p class="bdata-note">Desarrollado por <b>BData 🌾</b>.</p>
+</div>
+</div>
+""")
+st.markdown(MANUAL_HTML, unsafe_allow_html=True)
+
+# =============================
+# Header
+# =============================
 c1, c2 = st.columns([1, 6], gap="small")
 with c1:
     try:
         st.image(str(ASSETS_DIR / "logo_bdata.png"), use_container_width=True)
     except Exception:
-        st.write("")  # por si no está el logo aún
+        st.write("")
 with c2:
     st.title("Optimizador de Fertilización")
     st.markdown('<div class="bdata-claim">Planifica mezclas óptimas por potrero, cumpliendo N–P–K al menor costo.</div>', unsafe_allow_html=True)
 st.markdown('<div class="bdata-divider"></div>', unsafe_allow_html=True)
 
-# helper: toast seguro (Streamlit 1.38 lo soporta)
+# =============================
+# Manual largo (en página)
+# =============================
+with st.expander("📘 Manual rápido para el agricultor", expanded=False):
+    st.markdown(dedent("""
+    ### 🧭 ¿Qué hace esta herramienta?
+    Planifica **mezclas óptimas de fertilizantes por potrero** cumpliendo **N, P₂O₅ y K₂O** al **menor costo**.  
+    Optimiza dosis por producto y respeta límites de mezcla y N máx.
+
+    ---
+
+    ### 🪴 Flujo de trabajo
+    1. **Mapa** → Dibuja potreros y presiona **“Calcular áreas y crear potreros.csv”**.  
+    2. **Carga CSV** → Sube **productos.csv** y **requerimientos.csv**.  
+    3. **Parámetros A/B** → Ajusta **N máx**, **Mezcla máx** y **Tolerancia**.  
+    4. **Ejecutar 🚜** → Compara costos, tablas y gráficos. Exporta CSV/Markdown/PDF.
+
+    ---
+
+    ### 📂 Archivos y formatos (a prueba de errores)
+
+    **potreros.csv**  *(se genera automáticamente desde el mapa)*  
+    Columnas obligatorias:
+    - `potrero` (texto) – nombre/ID del potrero  
+    - `cultivo` (texto) – debe existir en `requerimientos.csv`  
+    - `superficie_ha` (número) – hectáreas del polígono
+
+    **Ejemplo**
+    ```
+    potrero,cultivo,superficie_ha
+    Potrero_1,Trigo,12.53
+    Potrero_2,Maiz,8.10
+    ```
+
+    **productos.csv**  
+    Columnas obligatorias:
+    - `producto` (texto)
+    - `N_pct`, `P2O5_pct`, `K2O_pct` (0–100, % de nutriente)
+    - `precio_CLP_ton` (CLP/ton)
+    - `dosis_min_kg_ha`, `dosis_max_kg_ha` (kg/ha)
+
+    **Ejemplo**
+    ```
+    producto,N_pct,P2O5_pct,K2O_pct,precio_CLP_ton,dosis_min_kg_ha,dosis_max_kg_ha
+    Urea,46,0,0,450000,0,300
+    MAP,11,52,0,620000,0,250
+    KCl,0,0,60,380000,0,250
+    ```
+
+    **requerimientos.csv**  
+    Columnas obligatorias:
+    - `cultivo`
+    - `N_req_kg_ha`, `P2O5_req_kg_ha`, `K2O_req_kg_ha` (kg/ha)
+
+    **Ejemplo**
+    ```
+    cultivo,N_req_kg_ha,P2O5_req_kg_ha,K2O_req_kg_ha
+    Trigo,160,70,0
+    Maiz,180,60,80
+    ```
+
+    > La app corrige encabezados comunes (p. ej. `P205_req_kg_ha` → `P2O5_req_kg_ha`) y admite `;` o `,` como separador.
+
+    ---
+
+    ### ⚙️ Parámetros (cómo elegirlos)
+    - **N máx (kg/ha):** tope de N por hectárea. Si está muy bajo, no se cumple y sube el costo.  
+    - **Mezcla máx (kg/ha):** kilos/ha aplicables por pasada (limitación del equipo).  
+    - **Tolerancia (%):** permite quedar bajo el requerimiento por un pequeño margen (2% → se pide 98%).  
+    - **Costo de aplicación (CLP/ton, opcional):** se suma al objetivo si lo activas.
+
+    **Sugerencias iniciales**
+    - Tolerancia: 1–3%  
+    - Mezcla máx: 400–700 kg/ha (según maquinaria)  
+    - N máx: acorde a la recomendación técnica del cultivo/zona
+
+    ---
+
+    ### 🧠 Glosario
+    - **Infactible / Infeasible:** no hay combinación que cumpla todo. Causas típicas: mezcla máx muy baja, N máx muy bajo, dosis mín altas, o falta de algún nutriente en `productos.csv`.  
+    - **Requerimiento efectivo:** requerimiento × (1 − tolerancia).  
+    - **Dosis mín/máx:** bandas por producto. La suma de mínimos es una cota mínima de mezcla total.  
+    - **Costo total:** ∑(kg/ha × superficie × precio/ton / 1000) + costo de aplicación si corresponde.
+
+    ---
+
+    ### 🧯 Diagnóstico cuando falla
+    1. **Aumenta Tolerancia:** de 1% → 2–3%.  
+    2. **Sube Mezcla máx:** revisa que **∑ dmin** de los productos no exceda la mezcla.  
+    3. **Relaja N máx:** si el cultivo exige alto N.  
+    4. **Revisa productos:** que existan fuentes de los 3 nutrientes que necesitas.  
+    5. **Chequea cultivos:** cada `cultivo` en `potreros.csv` debe estar en `requerimientos.csv`.
+
+    > El solver hace un **pre-chequeo** y puede avisar: “Potrero X: P2O5 requerido 80 > P máximo alcanzable 62 (mixmax/dmax).”
+
+    ---
+
+    ### 💡 Buenas prácticas
+    - Deja `dosis_min_kg_ha` en 0 salvo que quieras forzar uso.  
+    - Evita `dosis_max_kg_ha` muy bajas si tu **mezcla máx** ya está apretada.  
+    - Trabaja A/B: A = práctica estándar, B = hipótesis (más mezcla, otra tolerancia, etc.).  
+    - Mira “Diferencia (B−A)” por potrero y por producto: verás dónde el modelo ajusta la mezcla.
+
+    ---
+
+    ### ❓FAQs rápidas
+    - **¿Tengo que subir `potreros.csv`?** No, se genera desde el mapa.  
+    - **¿Puedo cargar mis polígonos?** Sí, en “Cargar GeoJSON”.  
+    - **¿Qué pasa si cambio el mapa?** Pulsa “Calcular áreas…” de nuevo.  
+    - **¿Por qué B es más caro?** Más restricciones (menos mezcla / menos N / menor tolerancia).  
+    - **¿Por qué B es más barato?** Más holgura → combinación más eficiente.
+
+    ---
+
+    ### 🧾 Salidas y reportes
+    - **CSV** con dosis A/B por potrero y producto.  
+    - **Markdown/PDF** “en chileno” con costos, diferencias y lectura simple.
+
+    Desarrollado por **BData 🌾** — Optimizando la fertilización con ciencia de datos.
+    """))
+
+
+# =============================
+# Helpers
+# =============================
 def toast_ok(msg: str):
     try:
         st.toast(msg, icon="✅")
@@ -128,29 +318,20 @@ def toast_warn(msg: str):
     except Exception:
         st.warning(msg)
 
-
-# =============================
-# Utilidades generales
-# =============================
 def formato_clp(n: int) -> str:
-    """Formatea CLP con punto de miles (estilo Chile)."""
     try:
         return f"${n:,.0f}".replace(",", ".")
     except Exception:
         return str(n)
 
-
 def costo_total_desde_txt(path: Path) -> int:
-    """Lee un _resumen.txt y extrae el número de CLP."""
-    if not path.exists():
+    if not path or not path.exists():
         return 0
     raw = path.read_text(encoding="utf-8")
     dig = "".join(ch for ch in raw if ch.isdigit())
     return int(dig) if dig else 0
 
-
 def df_to_md_table(df: pd.DataFrame) -> str:
-    """Convierte un DataFrame en tabla Markdown sin depender de 'tabulate'."""
     cols = [str(c) for c in df.columns]
     lines = ["| " + " | ".join(cols) + " |", "| " + " | ".join(["---"] * len(cols)) + " |"]
     for _, row in df.iterrows():
@@ -158,9 +339,8 @@ def df_to_md_table(df: pd.DataFrame) -> str:
         lines.append("| " + " | ".join(vals) + " |")
     return "\n".join(lines)
 
-
 # =============================
-# PDF helpers (ReportLab)
+# PDF helpers
 # =============================
 def _tabla_pdf(df: pd.DataFrame, col_widths=None):
     data = [list(df.columns)] + df.values.tolist()
@@ -179,7 +359,6 @@ def _tabla_pdf(df: pd.DataFrame, col_widths=None):
     ]))
     return tbl
 
-
 def build_pdf_reporte_chileno(
     logo_path: Optional[Path],
     costoA: int, costoB: int, dif_cost: int,
@@ -188,13 +367,11 @@ def build_pdf_reporte_chileno(
     pot_sel: str, diff_prod: pd.Series,
     dfAB_head: pd.DataFrame,
 ) -> bytes:
-    """Genera PDF (bytes) con un informe corto en chileno."""
     buf = BytesIO()
     doc = SimpleDocTemplate(
         buf, pagesize=A4,
         rightMargin=1.5 * cm, leftMargin=1.5 * cm, topMargin=1.5 * cm, bottomMargin=1.5 * cm
     )
-
     styles = getSampleStyleSheet()
     styles.add(ParagraphStyle(name="Tit", fontName="Helvetica-Bold", fontSize=18, textColor=colors.HexColor("#0b5e2b")))
     styles.add(ParagraphStyle(name="Sub", fontName="Helvetica-Bold", fontSize=12, textColor=colors.HexColor("#0b5e2b")))
@@ -202,8 +379,6 @@ def build_pdf_reporte_chileno(
     styles.add(ParagraphStyle(name="Chip", fontName="Helvetica-Bold", fontSize=11, textColor=colors.HexColor("#0b5e2b")))
 
     story = []
-
-    # Encabezado con logo (opcional)
     if logo_path and logo_path.exists():
         story.append(RLImage(str(logo_path), width=3.5 * cm, height=3.5 * cm))
         story.append(Spacer(1, 0.2 * cm))
@@ -213,29 +388,24 @@ def build_pdf_reporte_chileno(
     story.append(Paragraph(datetime.now().strftime("%d/%m/%Y %H:%M"), styles["Body"]))
     story.append(Spacer(1, 0.5 * cm))
 
-    # Costos
     story.append(Paragraph("💰 Costo total", styles["Sub"]))
     story.append(Paragraph(
-        f"En plata: A = <b>{formato_clp(costoA)}</b>, B = <b>{formato_clp(costoB)}</b>. "
+        f"A = <b>{formato_clp(costoA)}</b>, B = <b>{formato_clp(costoB)}</b>. "
         f"Diferencia (B − A): <b>{formato_clp(dif_cost)}</b> "
-        f"({'más caro 💸' if dif_cost > 0 else 'más barato 💰' if dif_cost < 0 else 'igual de caro 🤝'}).",
+        f"({'más caro 💸' if dif_cost > 0 else 'más barato 💰' if dif_cost < 0 else 'igual 🤝'}).",
         styles["Body"]
     ))
     story.append(Spacer(1, 0.4 * cm))
 
-    # Potreros (resumen)
     story.append(Paragraph("🌾 Potreros", styles["Sub"]))
     if pot_mayor_sube is not None and pot_mayor_baja is not None:
         story.append(Paragraph(
-            f"Donde más <b>sube</b> la dosis (B vs A) es en <b>{pot_mayor_sube}</b>; "
-            f"y donde más <b>baja</b> es en <b>{pot_mayor_baja}</b>.",
+            f"Donde más <b>sube</b> la dosis (B vs A): <b>{pot_mayor_sube}</b>; "
+            f"y donde más <b>baja</b>: <b>{pot_mayor_baja}</b>.",
             styles["Body"]
         ))
-    else:
-        story.append(Paragraph("Se muestran cambios por potrero más adelante.", styles["Body"]))
     story.append(Spacer(1, 0.3 * cm))
 
-    # Totales por potrero (tabla corta)
     tot_show = tot_por_pot.copy()
     cols = [c for c in ["A", "B"] if c in tot_show.columns]
     if len(cols) > 0:
@@ -243,22 +413,18 @@ def build_pdf_reporte_chileno(
         story.append(_tabla_pdf(tot_show[cols].round(2).reset_index(), col_widths=[4 * cm, 3.5 * cm, 3.5 * cm]))
         story.append(Spacer(1, 0.4 * cm))
 
-    # Producto que más sube/baja en pot_sel
     story.append(Paragraph(f"🧪 Mezclas en {pot_sel}", styles["Sub"]))
     if len(diff_prod) > 0:
-        p_up = diff_prod.idxmax()
-        p_dn = diff_prod.idxmin()
+        p_up = diff_prod.idxmax(); p_dn = diff_prod.idxmin()
         story.append(Paragraph(
-            f"En <b>{pot_sel}</b>, el producto que más <b>sube</b> con B vs A es <b>{p_up}</b> "
+            f"En <b>{pot_sel}</b>, el producto que más <b>sube</b> es <b>{p_up}</b> "
             f"({diff_prod.max():.1f} kg/ha) y el que más <b>baja</b> es <b>{p_dn}</b> "
-            f"({diff_prod.min():.1f} kg/ha).",
-            styles["Body"]
+            f"({diff_prod.min():.1f} kg/ha).", styles["Body"]
         ))
     else:
         story.append(Paragraph("No hay diferencias de mezcla en el potrero seleccionado.", styles["Body"]))
     story.append(Spacer(1, 0.4 * cm))
 
-    # Minitabla de muestras A/B
     story.append(Paragraph("Muestras de dosis por potrero y producto (A/B)", styles["Sub"]))
     mini = dfAB_head.copy()
     keep = [c for c in ["potrero", "producto", "kg_ha", "escenario"] if c in mini.columns]
@@ -266,29 +432,21 @@ def build_pdf_reporte_chileno(
     story.append(_tabla_pdf(mini, col_widths=[3.5 * cm, 4 * cm, 3 * cm, 2.5 * cm]))
     story.append(Spacer(1, 0.4 * cm))
 
-    # Conclusión
     story.append(Paragraph("🧠 Interpretación", styles["Sub"]))
     story.append(Paragraph(
-        "Si el escenario B te salió más caro, probablemente apretaste alguna restricción "
-        "(menos N máximo, menos mezcla por pasada) y el modelo se apoya en productos más concentrados "
-        "o sube dosis en potreros clave. Si B es más barato, diste más holgura (tolerancia mayor, N máximo más alto) "
-        "y se encontró una mezcla más eficiente. En simple: si querís eficiencia, revisa dónde B gasta menos sin perder "
-        "nutrientes; si querís asegurar techo productivo, mira dónde B sube dosis o cambia mezcla.",
+        "Si B es más caro, probablemente apretaste algún límite (N máx o mezcla) y el modelo usa productos más concentrados. "
+        "Si B es más barato, diste holgura (tolerancia/N máx) y encontró una mezcla más eficiente.",
         styles["Body"]
     ))
 
     story.append(Spacer(1, 0.6 * cm))
     story.append(Paragraph("Desarrollado por BData 🌾 – Demo con PuLP + Streamlit", styles["Chip"]))
-
     doc.build(story)
     return buf.getvalue()
-
 
 # =============================
 # Subida de archivos
 # =============================
-
-# Estado de archivos locales
 state = exists_local_inputs()
 st.markdown("**Estado de archivos en `data/`:**")
 cols = st.columns(3)
@@ -297,13 +455,11 @@ cols[1].markdown(f"- requerimientos.csv: {'✅' if 'requerimientos' in state els
 cols[2].markdown(f"- productos.csv: {'✅' if 'productos' in state else '❌'}")
 
 if 'potreros' in state:
-    st.info("Usando **potreros.csv** generado desde el **mapa** (no es necesario subirlo).")
+    st.info("Usando **potreros.csv** generado desde el **mapa** (no necesitas subirlo).")
 else:
     st.warning("Aún no existe `data/potreros.csv`. Puedes **dibujarlo en el mapa** o subirlo acá.")
 
-
-
-with st.expander("📂 Cargar datos de entrada", expanded=True):
+with st.expander("📂 Cargar datos de entrada", expanded=False):
     pot_file = st.file_uploader("Archivo de potreros (CSV)", type=["csv"])
     req_file = st.file_uploader("Archivo de requerimientos (CSV)", type=["csv"])
     prod_file = st.file_uploader("Archivo de productos (CSV)", type=["csv"])
@@ -317,46 +473,31 @@ with st.expander("📂 Cargar datos de entrada", expanded=True):
                     f.write(uploaded.getbuffer())
                 st.success(f"{name} guardado correctamente ✅")
 
-
 # =============================
-# Parámetros de optimización A/B
+# Parámetros A/B
 # =============================
 colA, colB = st.columns(2)
 with colA:
-    st.markdown("#### Escenario A")
+    st.markdown("#### Parámetros Escenario A")
     nA = st.number_input("N máx A (kg/ha)", 0, 500, 300, 10, key="nA")
     mixA = st.number_input("Mezcla máx A (kg/ha)", 0, 1000, 600, 10, key="mixA")
     tolA = st.number_input("Tolerancia A (%)", 0.0, 10.0, 2.0, 0.5, key="tolA")
-
 with colB:
-    st.markdown("#### Escenario B")
+    st.markdown("#### Parámetros Escenario B")
     nB = st.number_input("N máx B (kg/ha)", 0, 500, 250, 10, key="nB")
     mixB = st.number_input("Mezcla máx B (kg/ha)", 0, 1000, 500, 10, key="mixB")
     tolB = st.number_input("Tolerancia B (%)", 0.0, 10.0, 1.0, 0.5, key="tolB")
 
-
 # =============================
-# Ejecutar solver (por escenario)
+# Ejecutar solver
 # =============================
-
 def run_solver(nmax: int, mixmax: int, tol_pct: float, costo_ap_ton: int, tag: str):
-    """
-    Ejecuta el solver con un TAG (A/B) y valida que existan las salidas esperadas.
-    Retorna: (proc, csv_path, txt_path, ok)
-    """
-    # Archivos de salida esperados con sufijo por TAG (A / B)
     csv_path = DATA_DIR / f"resultados_dosis_{tag}.csv"
     txt_path = DATA_DIR / f"_resumen_{tag}.txt"
-
-    # (Opcional) borra salidas viejas para no confundir la validación
     for p in (csv_path, txt_path):
         if p.exists():
-            try:
-                p.unlink()
-            except Exception:
-                pass
-
-    # Lanza el solver con los parámetros
+            try: p.unlink()
+            except Exception: pass
     proc = subprocess.run(
         [
             sys.executable, str(SOLVER_PATH),
@@ -364,13 +505,10 @@ def run_solver(nmax: int, mixmax: int, tol_pct: float, costo_ap_ton: int, tag: s
             "--mixmax", str(mixmax),
             "--tol",    str(tol_pct/100.0),
             "--costoap",str(costo_ap_ton),
-            "--tag",    tag,                      # ⚠️ el solver debe aceptar --tag
+            "--tag",    tag,
         ],
-        capture_output=True,
-        text=True
+        capture_output=True, text=True
     )
-
-    # Éxito: returncode OK y archivos de salida presentes
     ok = (proc.returncode == 0) and csv_path.exists() and txt_path.exists()
     return proc, csv_path, txt_path, ok
 
@@ -380,21 +518,17 @@ import folium
 from streamlit_folium import st_folium
 from pyproj import Geod
 from shapely.geometry import shape
-
 GEOD = Geod(ellps="WGS84")
 POTREROS_GEOJSON = DATA_DIR / "potreros.geojson"
 POTREROS_CSV = DATA_DIR / "potreros.csv"
 
 with st.expander("🗺️ Mapa de potreros (dibujar o cargar)", expanded=False):
     left, right = st.columns([3, 2])
-
-    # Panel derecho: centro y carga de GeoJSON
     with right:
         st.markdown("**Base del mapa**")
         center_lat = st.number_input("Latitud centro", value=-34.50, step=0.01, format="%.6f")
         center_lon = st.number_input("Longitud centro", value=-71.20, step=0.01, format="%.6f")
         zoom = st.slider("Zoom", 8, 18, 14)
-
         st.markdown("**Cargar GeoJSON (opcional)**")
         up = st.file_uploader("Subir GeoJSON de potreros", type=["geojson", "json"])
         if up:
@@ -404,39 +538,23 @@ with st.expander("🗺️ Mapa de potreros (dibujar o cargar)", expanded=False):
                 st.success("GeoJSON cargado y guardado en data/potreros.geojson ✅")
             except Exception as e:
                 st.error(f"Error al leer GeoJSON: {e}")
-
         st.caption("Tip: si no tienes GeoJSON, dibuja tus potreros directo en el mapa.")
-
-    # Panel izquierdo: mapa folium con herramienta de dibujo
     with left:
         m = folium.Map(location=[center_lat, center_lon], zoom_start=zoom, tiles="OpenStreetMap")
-        # Capa satélite (útil para ubicarse)
         folium.TileLayer(
             tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-            attr="Esri WorldImagery",
-            name="Satélite"
-        ).add_to(m)
-
-        # Si ya hay un GeoJSON guardado, dibujarlo
+            attr="Esri WorldImagery", name="Satélite").add_to(m)
         if POTREROS_GEOJSON.exists():
             gj_prev = json.loads(POTREROS_GEOJSON.read_text(encoding="utf-8"))
             folium.GeoJson(gj_prev, name="Potreros").add_to(m)
-
-        # Herramientas de dibujo
         from folium.plugins import Draw
-        Draw(
-            draw_options={
-                "polyline": False, "rectangle": False, "circle": False,
-                "circlemarker": False, "marker": False, "polygon": True
-            },
-            edit_options={"edit": True, "remove": True}
-        ).add_to(m)
+        Draw(draw_options={"polyline": False, "rectangle": False, "circle": False,
+                           "circlemarker": False, "marker": False, "polygon": True},
+             edit_options={"edit": True, "remove": True}).add_to(m)
         folium.LayerControl().add_to(m)
-
         map_state = st_folium(m, width=700, height=520, returned_objects=["all_drawings"])
 
     c1, c2 = st.columns(2)
-    # Botón: guardar dibujo como GeoJSON (acumula con lo previo)
     with c1:
         if st.button("💾 Guardar dibujo como GeoJSON"):
             features = []
@@ -444,26 +562,20 @@ with st.expander("🗺️ Mapa de potreros (dibujar o cargar)", expanded=False):
                 prev = json.loads(POTREROS_GEOJSON.read_text(encoding="utf-8"))
                 if prev.get("type") == "FeatureCollection":
                     features.extend(prev.get("features", []))
-
             nuevos = map_state.get("all_drawings") or []
             for feat in nuevos:
                 geom = feat.get("geometry", {})
                 if geom and geom.get("type") == "Polygon":
                     props = feat.get("properties") or {}
-                    # Si no tiene nombre, generar uno
                     props.setdefault("potrero", f"Potrero_{len(features)+1}")
-                    # cultivo es opcional; se puede editar luego
                     props.setdefault("cultivo", "SinCultivo")
                     features.append({"type": "Feature", "properties": props, "geometry": geom})
-
             if not features:
                 st.warning("No hay polígonos para guardar.")
             else:
                 gj_new = {"type": "FeatureCollection", "features": features}
                 POTREROS_GEOJSON.write_text(json.dumps(gj_new, ensure_ascii=False), encoding="utf-8")
                 st.success("GeoJSON guardado en data/potreros.geojson ✅")
-
-    # Botón: calcular áreas (ha) y generar potreros.csv
     with c2:
         if st.button("🧮 Calcular áreas y crear potreros.csv"):
             if not POTREROS_GEOJSON.exists():
@@ -482,12 +594,10 @@ with st.expander("🗺️ Mapa de potreros (dibujar o cargar)", expanded=False):
                     potrero = f.get("properties", {}).get("potrero", "SinNombre")
                     cultivo = f.get("properties", {}).get("cultivo", "SinCultivo")
                     filas.append({"potrero": potrero, "cultivo": cultivo, "superficie_ha": round(area_ha, 3)})
-
                 if not filas:
                     st.warning("No encontré polígonos válidos.")
                 else:
                     dfpot = pd.DataFrame(filas)
-                    # Editor rápido para asignar cultivo desde requerimientos disponibles
                     try:
                         reqs = pd.read_csv(DATA_DIR / "requerimientos.csv", sep=None, engine="python")
                         cultivos_posibles = sorted(reqs["cultivo"].unique().tolist())
@@ -499,31 +609,24 @@ with st.expander("🗺️ Mapa de potreros (dibujar o cargar)", expanded=False):
                             lambda x: x if x in cultivos_posibles else (cultivos_posibles[0] if cultivos_posibles else x)
                         )
                         dfpot = st.data_editor(
-                            dfpot,
-                            num_rows="dynamic",
-                            column_config={
-                                "cultivo": st.column_config.SelectboxColumn(options=cultivos_posibles)
-                            },
+                            dfpot, num_rows="dynamic",
+                            column_config={"cultivo": st.column_config.SelectboxColumn(options=cultivos_posibles)},
                             use_container_width=True
                         )
                     else:
                         st.dataframe(dfpot, use_container_width=True)
-
                     dfpot.to_csv(POTREROS_CSV, index=False, encoding="utf-8")
                     st.success("✅ Generado/actualizado data/potreros.csv listo para el solver")
 
-
-
 # =============================
-# Botón: ejecutar A/B (con textos + toasts + delta)
-# === REEMPLAZA TU BLOQUE POR ESTE ===
+# BOTÓN: Ejecutar A/B
 # =============================
 if st.button("🚜 Ejecutar escenarios A y B", key="run_ab"):
+    st.session_state["already_rendered"] = True  # para no duplicar abajo
     with st.spinner("Ejecutando optimizaciones A y B..."):
         resA, csvA, txtA, okA = run_solver(nA, mixA, tolA, 0, "A")
         resB, csvB, txtB, okB = run_solver(nB, mixB, tolB, 0, "B")
 
-    # Mensajes según resultado real
     if not okA and not okB:
         st.warning("Ninguno de los escenarios terminó bien. Revisa límites y datos.")
         st.caption("Logs A:"); st.code(resA.stderr or resA.stdout or "sin salida")
@@ -538,261 +641,151 @@ if st.button("🚜 Ejecutar escenarios A y B", key="run_ab"):
     else:
         st.success("Optimización completada ✅")
 
-    # A partir de aquí, carga lo que SÍ exista (A y/o B) sin reventar
-    costoA = costoB = None
-    if okA:
-        costoA = costo_total_desde_txt(txtA)
-    if okB:
-        costoB = costo_total_desde_txt(txtB)
+    # Cargar costos
+    costoA = costo_total_desde_txt(txtA) if okA else None
+    costoB = costo_total_desde_txt(txtB) if okB else None
 
-    # Métricas: solo muestra lo que tengas
-    cols = []
-    if costoA is not None: cols.append(("Costo A", costoA))
-    if costoB is not None: cols.append(("Costo B", costoB))
-    if costoA is not None and costoB is not None:
+    # Métricas
+    metros = []
+    if costoA is not None: metros.append(("Costo A", costoA))
+    if costoB is not None: metros.append(("Costo B", costoB))
+    if (costoA is not None) and (costoB is not None):
         dif_cost = costoB - costoA
-        cols.append(("Diferencia (B - A)", dif_cost))
+        metros.append(("Diferencia (B - A)", dif_cost))
+    if metros:
+        cols_m = st.columns(len(metros))
+        for i, (lab, val) in enumerate(metros):
+            cols_m[i].metric(lab, formato_clp(val))
 
-    if cols:
-        c = st.columns(len(cols))
-        for i, (label, val) in enumerate(cols):
-            st.metric(label, formato_clp(val))
-
-    # Texto resumen (solo si hay ambos)
+    # Texto corto
     if (costoA is not None) and (costoB is not None):
         dif_cost = costoB - costoA
         st.markdown(
             f"""
 **¿Cómo leerlo?**  
 - **A:** {formato_clp(costoA)}  ·  **B:** {formato_clp(costoB)}  
-- La diferencia (**B − A**) es **{formato_clp(dif_cost)}** → {'sube' if dif_cost>0 else 'baja' if dif_cost<0 else 'no cambia'} con B.  
-Si está **en positivo**, B es **más caro**; si está **en negativo**, B es **más barato**.
+- Diferencia (**B − A**): **{formato_clp(dif_cost)}** → {'sube' if dif_cost>0 else 'baja' if dif_cost<0 else 'no cambia'} con B.  
+Si está **positivo**, B es **más caro**; si está **negativo**, B es **más barato**.
             """
         )
 
-    # Tablas / gráficos comparativos, solo si existen ambos CSV
-    if (okA and okB):
+    # Guardar TODO en estado
+    st.session_state["last_run"] = {
+        "okA": okA, "okB": okB,
+        "csvA": str(csvA) if okA else None,
+        "txtA": str(txtA) if okA else None,
+        "csvB": str(csvB) if okB else None,
+        "txtB": str(txtB) if okB else None,
+        "costoA": costoA if okA else None,
+        "costoB": costoB if okB else None,
+        "mixA": mixA, "mixB": mixB, "nA": nA, "nB": nB, "tolA": tolA, "tolB": tolB,
+    }
+
+    # ===== Resumen agronómico (inmediato)
+    def resumen_agronomico(tag, csv_path, mix_lim):
+        if not csv_path or not csv_path.exists():
+            return
+        st.markdown(f"### Escenario {tag}")
+        df = pd.read_csv(csv_path)
+        prods = pd.read_csv(DATA_DIR / "productos.csv", sep=None, engine="python")
+        df = df.merge(prods[["producto","N_pct","P2O5_pct","K2O_pct"]], on="producto", how="left")
+        df["N_aporte"] = df["kg_ha"] * df["N_pct"] / 100
+        df["P_aporte"] = df["kg_ha"] * df["P2O5_pct"] / 100
+        df["K_aporte"] = df["kg_ha"] * df["K2O_pct"] / 100
+        resumen = (df.groupby("producto")[["kg_ha","N_aporte","P_aporte","K_aporte"]]
+                     .sum()
+                     .assign(**{"% mezcla": lambda x: 100*x["kg_ha"]/x["kg_ha"].sum()})
+                     .round(2))
+        st.dataframe(resumen, use_container_width=True)
+        predom = resumen["% mezcla"].idxmax()
+        tiene_N = resumen["N_aporte"].sum() > 0.5
+        tiene_P = resumen["P_aporte"].sum() > 0.5
+        tiene_K = resumen["K_aporte"].sum() > 0.5
+        texto = f"La mezcla del escenario {tag} tiene **predominio de {predom}**"
+        if   tiene_N and tiene_P: texto += ", por su doble aporte de N y P₂O₅"
+        elif tiene_N:             texto += ", como fuente principal de N"
+        elif tiene_P:             texto += ", como fuente principal de P₂O₅"
+        elif tiene_K:             texto += ", aportando K₂O"
+        texto += "."
+        if not tiene_K:
+            texto += " No se usa KCl ni otras fuentes de potasio porque K₂O no es requerido."
+        total_mix = resumen["kg_ha"].sum()
+        if mix_lim is not None:
+            texto += " La mezcla total "
+            if total_mix < 0.9*mix_lim: texto += "queda bajo el límite de mezcla (buena eficiencia)."
+            elif total_mix <= mix_lim:  texto += "llega cerca del límite de mezcla (ajuste fino)."
+            else:                       texto += "supera el límite de mezcla; revisa parámetros o dosis mínimas."
+        st.markdown(f"> 🧩 {texto}")
+
+    st.markdown("## 🌾 Interpretación agronómica de la mezcla")
+    if okA: resumen_agronomico("A", csvA, mixA)
+    if okB: resumen_agronomico("B", csvB, mixB)
+
+    # ===== Comparativos / Reportes SOLO si existen A y B
+    if okA and okB:
         dfA = pd.read_csv(csvA); dfA["escenario"] = "A"
         dfB = pd.read_csv(csvB); dfB["escenario"] = "B"
         dfAB = pd.concat([dfA, dfB], ignore_index=True)
-        # … (resto de tus gráficos/validaciones que ya tenías)
 
-
-
-
-        # 1) Tabla de dosis A vs B
         st.subheader("📊 Comparación de dosis (A vs B)")
         st.dataframe(dfAB, use_container_width=True)
 
-        top_filas = (dfAB.sort_values("kg_ha", ascending=False)
-                         .head(3)[["potrero", "producto", "kg_ha", "escenario"]].values.tolist())
-        texto_top = " · ".join([f"{p}-{prod}: {kg:.0f} kg/ha ({esc})" for p, prod, kg, esc in top_filas]) if top_filas else "—"
-        st.markdown(
-            f"""
-**Para leer la tabla:**  
-- Cada fila muestra **kg/ha por producto y potrero**, y **qué escenario**.  
-- Compara el mismo potrero-producto entre A y B para ver dónde sube o baja.  
-- **3 valores más altos** (ojo rápido): {texto_top}.
-            """
-        )
-
-        # 2) Total kg/ha por potrero (A vs B)
         st.subheader("📈 Total kg/ha por potrero (A vs B)")
-        tot_por_pot = (
-            dfAB.groupby(["potrero", "escenario"])["kg_ha"]
-                .sum().unstack("escenario").fillna(0).sort_index()
-        )
+        tot_por_pot = (dfAB.groupby(["potrero","escenario"])["kg_ha"]
+                          .sum().unstack("escenario").fillna(0).sort_index())
         st.bar_chart(tot_por_pot)
 
-        dif_pot = (tot_por_pot.get("B", 0) - tot_por_pot.get("A", 0)).rename("dif")
-        pot_mayor_sube = dif_pot.idxmax() if hasattr(dif_pot, "idxmax") and len(dif_pot) else None
-        pot_mayor_baja = dif_pot.idxmin() if hasattr(dif_pot, "idxmin") and len(dif_pot) else None
+        dif_pot = (tot_por_pot.get("B",0) - tot_por_pot.get("A",0)).rename("dif")
+        pot_mayor_sube = dif_pot.idxmax() if len(dif_pot) else None
+        pot_mayor_baja = dif_pot.idxmin() if len(dif_pot) else None
 
-        sube_txt = f"{pot_mayor_sube} (+{dif_pot.max():.1f} kg/ha)" if pot_mayor_sube else "—"
-        baja_txt = f"{pot_mayor_baja} ({dif_pot.min():.1f} kg/ha)" if pot_mayor_baja else "—"
-        st.markdown(
-            f"""
-**¿Cómo leer este gráfico?**  
-- Muestra el **total de kg/ha** (todos los productos) por **potrero** comparando A vs B.  
-- **Mayor aumento**: {sube_txt}.  **Mayor baja**: {baja_txt}.  
-*(Valores aprox. para captar la tendencia).*
-            """
-        )
-
-        # 3) Diferencia total (B − A) por potrero
         st.subheader("📉 Diferencia total (B − A) por potrero")
         st.bar_chart(dif_pot)
 
-        # 4) Comparación por producto en potrero
         pot_sel = st.selectbox("🔎 Comparar mezcla por producto en potrero:", sorted(dfAB["potrero"].unique()))
-        mix_pot = (
-            dfAB[dfAB["potrero"] == pot_sel]
-                .pivot_table(index="producto", columns="escenario", values="kg_ha", aggfunc="sum")
-                .fillna(0).sort_index()
-        )
+        mix_pot = (dfAB[dfAB["potrero"] == pot_sel]
+                      .pivot_table(index="producto", columns="escenario", values="kg_ha", aggfunc="sum")
+                      .fillna(0).sort_index())
         st.subheader(f"🧪 Mezcla en {pot_sel} (kg/ha)")
         st.bar_chart(mix_pot)
 
-        prod_top_A = mix_pot["A"].idxmax() if "A" in mix_pot.columns and len(mix_pot) else "—"
-        prod_top_B = mix_pot["B"].idxmax() if "B" in mix_pot.columns and len(mix_pot) else "—"
-        st.markdown(
-            f"""
-**¿Cómo leer este gráfico?**  
-- Compara **producto por producto** en **{pot_sel}** entre A y B.  
-- **Más fuerte en A:** {prod_top_A}.  **Más fuerte en B:** {prod_top_B}.  
-Si B usa más de un producto, puede ser por **límite de mezcla** o **N máx** más apretado.
-            """
-        )
-
-        # 5) Diferencia por producto (B − A) en potrero seleccionado
         st.subheader(f"📊 Diferencia por producto en {pot_sel} (B − A)")
-        diff_prod = (mix_pot.get("B", 0) - mix_pot.get("A", 0)).rename("Diferencia (kg/ha)")
+        diff_prod = (mix_pot.get("B",0) - mix_pot.get("A",0)).rename("Diferencia (kg/ha)")
         st.bar_chart(diff_prod)
 
-        if len(diff_prod) > 0:
-            p_up = diff_prod.idxmax()
-            p_dn = diff_prod.idxmin()
-            st.markdown(
-                f"""
-**En simple:**  
-- En **{pot_sel}**, **sube más**: {p_up} (+{diff_prod.max():.1f} kg/ha).  
-- **Baja más**: {p_dn} ({diff_prod.min():.1f} kg/ha).  
-Así ves **dónde está ajustando la mezcla** el modelo cuando cambias parámetros.
-                """
-            )
-
-        # =============================
-        # Resumen en chileno por potrero (A vs B)
-        # =============================
-        def render_resumen_chileno_ab():
-            if "dfAB" not in st.session_state:
-                return
-            dfAB = st.session_state["dfAB"]
-            if dfAB is None or dfAB.empty:
-                return
-
-            st.markdown("### 🧾 Resumen para terreno (en chileno)")
-
-            # Resumen de costos si los tenemos guardados
-            costoA = st.session_state.get("costoA")
-            costoB = st.session_state.get("costoB")
-            if isinstance(costoA, (int, float)) and isinstance(costoB, (int, float)):
-                dif_cost = (costoB - costoA)
-                st.markdown(
-                    f"- **Costo A**: {formato_clp(costoA)} | **Costo B**: {formato_clp(costoB)} | "
-                    f"**Diferencia (B − A)**: {formato_clp(dif_cost)} "
-                    f"→ {'B más caro' if dif_cost>0 else 'B más barato' if dif_cost<0 else 'igual'}."
-                )
-
-            # Total kg/ha por potrero y escenario
-            tot = (
-                dfAB.groupby(["potrero", "escenario"])["kg_ha"]
-                .sum()
-                .unstack(fill_value=0)
-            )
-            if "A" not in tot.columns:
-                tot["A"] = 0.0
-            if "B" not in tot.columns:
-                tot["B"] = 0.0
-            tot["dif_BA"] = tot["B"] - tot["A"]
-
-            # Para cada potrero: cambios de productos (top 3 por magnitud)
-            for potrero, sub in dfAB.groupby("potrero", sort=False):
-                matriz = (
-                    sub.pivot_table(
-                        index="producto", columns="escenario",
-                        values="kg_ha", aggfunc="sum", fill_value=0.0
-                    )
-                )
-                if "A" not in matriz.columns:
-                    matriz["A"] = 0.0
-                if "B" not in matriz.columns:
-                    matriz["B"] = 0.0
-                matriz["dif_BA"] = matriz["B"] - matriz["A"]
-
-                # Orden por cambio absoluto y tomar los top 3 “movedores”
-                orden = matriz["dif_BA"].abs().sort_values(ascending=False).index
-                movers = matriz.loc[orden].head(3)
-
-                suben = [f"{p}: +{v:.1f} kg/ha" for p, v in movers[movers["dif_BA"] > 0]["dif_BA"].items()]
-                bajan = [f"{p}: {v:.1f} kg/ha" for p, v in movers[movers["dif_BA"] < 0]["dif_BA"].items()]
-
-                totalA = float(tot.loc[potrero, "A"]) if potrero in tot.index else 0.0
-                totalB = float(tot.loc[potrero, "B"]) if potrero in tot.index else 0.0
-                dtotal = float(tot.loc[potrero, "dif_BA"]) if potrero in tot.index else 0.0
-
-                etiqueta = (
-                    "más mezcla total en B" if dtotal > 0
-                    else "menos mezcla total en B" if dtotal < 0
-                    else "misma mezcla total"
-                )
-
-                with st.expander(
-                    f"**{potrero}** — total A: {totalA:.1f} kg/ha · total B: {totalB:.1f} kg/ha "
-                    f"({('+' if dtotal>0 else '')}{dtotal:.1f}) → {etiqueta}",
-                    expanded=False
-                ):
-                    if suben:
-                        st.markdown("- **Sube**: " + ", ".join(suben))
-                    if bajan:
-                        st.markdown("- **Baja**: " + ", ".join(bajan))
-                    if not suben and not bajan:
-                        st.markdown("- Sin cambios relevantes de productos.")
-
-                    # Tiro un tip corto, útil para conversación con el agricultor:
-                    tip = (
-                        "Si el potrero anda justo en N/P/K, ojo con no pasarse por arriba en mezcla total. "
-                        "Si se ve **subcumplimiento**, mueve dosis desde los que **suben** hacia los productos que faltan, "
-                        "manteniendo el tope de mezcla (kg/ha) que aguanta tu maquinaria."
-                    )
-                    st.caption(tip)
-
-        # === Llamar al render (ponlo debajo de tus gráficos/tablas A/B)
-        render_resumen_chileno_ab()
-
-
-        # 6) Descarga CSV
+        # Descarga CSV comparación
         st.download_button(
             "📥 Descargar comparación A/B (CSV)",
-            data=dfAB.to_csv(index=False).encode("utf-8"),
+            data=pd.concat([dfA, dfB]).to_csv(index=False).encode("utf-8"),
             file_name="comparacion_AB.csv",
             mime="text/csv",
-            key="dl_ab"
+            key="dl_ab",
         )
 
-        # 7) Reporte “en chileno” (Markdown)
+        # ===== Reporte “en chileno” (MD + PDF) — DENTRO del if okA and okB
+        dif_cost = (costoB - costoA)
+        sube_txt = f"{dif_pot.idxmax()} (+{dif_pot.max():.1f} kg/ha)" if len(dif_pot) else "—"
+        baja_txt = f"{dif_pot.idxmin()} ({dif_pot.min():.1f} kg/ha)" if len(dif_pot) else "—"
+        p_up = diff_prod.idxmax() if len(diff_prod)>0 else "—"
+        p_dn = diff_prod.idxmin() if len(diff_prod)>0 else "—"
+
         resumen_txt = f"""
-# 🧾 Informe – Comparación de Escenarios A y B
+# 🧾 Informe – Comparación A y B
 
 ## 💰 Costo total
-En plata, el escenario A cuesta **{formato_clp(costoA)}**,
-mientras que el escenario B cuesta **{formato_clp(costoB)}**.
-La diferencia es de **{formato_clp(dif_cost)}**,
-así que el escenario B es **{'más caro 💸' if dif_cost>0 else 'más barato 💰' if dif_cost<0 else 'igual de caro 🤝'}**.
+A: **{formato_clp(costoA)}** · B: **{formato_clp(costoB)}** · Diferencia: **{formato_clp(dif_cost)}** → {'B más caro 💸' if dif_cost>0 else 'B más barato 💰' if dif_cost<0 else 'igual 🤝'}.
 
 ## 🌾 Potreros
-Donde más **sube** la dosis (B vs A): **{sube_txt}**.  
-Donde más **baja** la dosis (B vs A): **{baja_txt}**.
+Mayor aumento: **{sube_txt}** · Mayor baja: **{baja_txt}**.
 
 ## 🧪 Mezclas y productos
-En el potrero **{pot_sel}**,
-el producto que más **aumenta** con B vs A es **{p_up if len(diff_prod)>0 else '—'}** ({diff_prod.max():.1f} kg/ha),
-y el que más **disminuye** es **{p_dn if len(diff_prod)>0 else '—'}** ({diff_prod.min():.1f} kg/ha).
+En **{pot_sel}**: sube más **{p_up if len(diff_prod)>0 else '—'}**, baja más **{p_dn if len(diff_prod)>0 else '—'}**.
 
 ## 🧠 Interpretación
-Si el escenario B te cuesta más caro, probablemente apretaste una **restricción**
-(por ejemplo **menos N máximo** o **menos mezcla por pasada**).
-El modelo entonces se ve obligado a usar **productos más concentrados o caros**.
+Si B cuesta más, apretaste límites (N máx o mezcla) y el modelo usa productos más concentrados.
+Si B es más barato, diste holgura (tolerancia/N máx) y encontró una mezcla más eficiente.
 
-Si B es más barato, quizá diste más **holgura** (tolerancia mayor, N máximo más alto)
-y encontró una **mezcla más eficiente**.
-
-En simple:
-- Si buscas **eficiencia económica**, fíjate dónde B gasta menos sin perder nutrientes.
-- Si buscas **techo productivo**, mira dónde B sube dosis o cambia mezcla.
-
----
-_Desarrollado por BData 🌾 – herramienta demo con PuLP + Streamlit_
+_Desarrollado por BData 🌾 – PuLP + Streamlit_
         """.strip()
 
         st.download_button(
@@ -800,13 +793,11 @@ _Desarrollado por BData 🌾 – herramienta demo con PuLP + Streamlit_
             data=resumen_txt.encode("utf-8"),
             file_name="reporte_en_chileno.md",
             mime="text/markdown",
-            key="dl_chileno"
+            key="dl_chileno",
         )
 
-        # 8) Reporte PDF en chileno (con logo opcional)
-        logo_path = DATA_DIR / "logo-bdata.png"  # pon tu logo aquí; si no existe, se omite
+        logo_path = DATA_DIR / "logo-bdata.png"
         dfAB_head = dfAB.head(10).copy()
-
         pdf_bytes = build_pdf_reporte_chileno(
             logo_path=logo_path if logo_path.exists() else None,
             costoA=costoA, costoB=costoB, dif_cost=dif_cost,
@@ -815,13 +806,104 @@ _Desarrollado por BData 🌾 – herramienta demo con PuLP + Streamlit_
             pot_sel=pot_sel, diff_prod=diff_prod,
             dfAB_head=dfAB_head,
         )
-
         st.download_button(
-            "📥 Descargar informe ferilización BData (PDF)",
+            "📥 Descargar informe fertilización BData (PDF)",
             data=pdf_bytes,
             file_name="informe_fertilizacion_BData.pdf",
             mime="application/pdf",
-            key="dl_pdf_chileno"
+            key="dl_pdf_chileno",
         )
 
+# =============================
+# Render persistente (último resultado) — evita duplicar si ya renderizamos
+# =============================
+from pathlib import Path as _Path
+ctx = st.session_state.get("last_run", {})
+
+if ctx and (ctx.get("okA") or ctx.get("okB")) and not st.session_state["already_rendered"]:
+    costoA = ctx.get("costoA"); costoB = ctx.get("costoB")
+    mixA = ctx.get("mixA"); mixB = ctx.get("mixB")
+    csvA = _Path(ctx["csvA"]) if ctx.get("okA") and ctx.get("csvA") else None
+    txtA = _Path(ctx["txtA"]) if ctx.get("okA") and ctx.get("txtA") else None
+    csvB = _Path(ctx["csvB"]) if ctx.get("okB") and ctx.get("csvB") else None
+    txtB = _Path(ctx["txtB"]) if ctx.get("okB") and ctx.get("txtB") else None
+
+    st.markdown("## 🌾 Interpretación agronómica de la mezcla")
+
+    def resumen_agronomico_persist(tag, csv_path, mix_lim):
+        if not csv_path or not csv_path.exists():
+            return
+        st.markdown(f"### Escenario {tag}")
+        df = pd.read_csv(csv_path)
+        prods = pd.read_csv(DATA_DIR / "productos.csv", sep=None, engine="python")
+        df = df.merge(prods[["producto","N_pct","P2O5_pct","K2O_pct"]], on="producto", how="left")
+        df["N_aporte"] = df["kg_ha"] * df["N_pct"] / 100
+        df["P_aporte"] = df["kg_ha"] * df["P2O5_pct"] / 100
+        df["K_aporte"] = df["kg_ha"] * df["K2O_pct"] / 100
+        resumen = (df.groupby("producto")[["kg_ha","N_aporte","P_aporte","K_aporte"]]
+                     .sum()
+                     .assign(**{"% mezcla": lambda x: 100*x["kg_ha"]/x["kg_ha"].sum()})
+                     .round(2))
+        st.dataframe(resumen, use_container_width=True)
+        predom = resumen["% mezcla"].idxmax()
+        tiene_N = resumen["N_aporte"].sum() > 0.5
+        tiene_P = resumen["P_aporte"].sum() > 0.5
+        tiene_K = resumen["K_aporte"].sum() > 0.5
+        texto = f"La mezcla del escenario {tag} tiene **predominio de {predom}**"
+        if   tiene_N and tiene_P: texto += ", por su doble aporte de N y P₂O₅"
+        elif tiene_N:             texto += ", como fuente principal de N"
+        elif tiene_P:             texto += ", como fuente principal de P₂O₅"
+        elif tiene_K:             texto += ", aportando K₂O"
+        texto += "."
+        if not tiene_K:
+            texto += " No se usa KCl ni otras fuentes de potasio porque K₂O no es requerido."
+        total_mix = resumen["kg_ha"].sum()
+        if mix_lim is not None:
+            texto += " La mezcla total "
+            if total_mix < 0.9*mix_lim: texto += "queda bajo el límite de mezcla (buena eficiencia)."
+            elif total_mix <= mix_lim:  texto += "llega cerca del límite de mezcla (ajuste fino)."
+            else:                       texto += "supera el límite; revisa parámetros o dósis mínimas."
+        st.markdown(f"> 🧩 {texto}")
+
+    if ctx.get("okA"): resumen_agronomico_persist("A", csvA, mixA)
+    if ctx.get("okB"): resumen_agronomico_persist("B", csvB, mixB)
+
+    if ctx.get("okA") and ctx.get("okB"):
+        dfA = pd.read_csv(csvA); dfA["escenario"] = "A"
+        dfB = pd.read_csv(csvB); dfB["escenario"] = "B"
+        dfAB = pd.concat([dfA, dfB], ignore_index=True)
+
+        st.subheader("📊 Comparación de dosis (A vs B)")
+        st.dataframe(dfAB, use_container_width=True)
+
+        st.subheader("📈 Total kg/ha por potrero (A vs B)")
+        tot_por_pot = (dfAB.groupby(["potrero","escenario"])["kg_ha"]
+                          .sum().unstack("escenario").fillna(0).sort_index())
+        st.bar_chart(tot_por_pot)
+
+        dif_pot = (tot_por_pot.get("B",0) - tot_por_pot.get("A",0)).rename("dif")
+        st.subheader("📉 Diferencia total (B − A) por potrero")
+        st.bar_chart(dif_pot)
+
+        pot_sel = st.selectbox("🔎 Comparar mezcla por producto en potrero:",
+                               sorted(dfAB["potrero"].unique()), key="sel_persist")
+        mix_pot = (dfAB[dfAB["potrero"] == pot_sel]
+                      .pivot_table(index="producto", columns="escenario", values="kg_ha", aggfunc="sum")
+                      .fillna(0).sort_index())
+        st.subheader(f"🧪 Mezcla en {pot_sel} (kg/ha)")
+        st.bar_chart(mix_pot)
+
+        st.subheader(f"📊 Diferencia por producto en {pot_sel} (B − A)")
+        diff_prod = (mix_pot.get("B",0) - mix_pot.get("A",0)).rename("Diferencia (kg/ha)")
+        st.bar_chart(diff_prod)
+
+        st.download_button(
+            "📥 Descargar comparación A/B (CSV)",
+            data=pd.concat([dfA, dfB]).to_csv(index=False).encode("utf-8"),
+            file_name="comparacion_AB.csv",
+            mime="text/csv",
+            key="dl_ab_persist",
+        )
+
+# Pie
 st.caption("Desarrollado por BData 🌾 | Digitalizando el campo Chileno")
