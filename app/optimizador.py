@@ -16,6 +16,22 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import cm
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image as RLImage
 
+# === utilidades para leer CSVs locales si existen ===
+def read_csv_flexible(path: Path) -> pd.DataFrame:
+    try:
+        return pd.read_csv(path, sep=None, engine="python", encoding="utf-8-sig")
+    except Exception as e:
+        st.error(f"Error leyendo {path.name}: {e}")
+        raise
+
+def exists_local_inputs() -> dict:
+    """Detecta inputs locales en data/ y devuelve rutas existentes."""
+    files = {
+        "potreros": DATA_DIR / "potreros.csv",
+        "requerimientos": DATA_DIR / "requerimientos.csv",
+        "productos": DATA_DIR / "productos.csv",
+    }
+    return {k: p for k, p in files.items() if p.exists()}
 
 # =============================
 # Rutas base
@@ -271,6 +287,22 @@ def build_pdf_reporte_chileno(
 # =============================
 # Subida de archivos
 # =============================
+
+# Estado de archivos locales
+state = exists_local_inputs()
+st.markdown("**Estado de archivos en `data/`:**")
+cols = st.columns(3)
+cols[0].markdown(f"- potreros.csv: {'✅' if 'potreros' in state else '❌'}")
+cols[1].markdown(f"- requerimientos.csv: {'✅' if 'requerimientos' in state else '❌'}")
+cols[2].markdown(f"- productos.csv: {'✅' if 'productos' in state else '❌'}")
+
+if 'potreros' in state:
+    st.info("Usando **potreros.csv** generado desde el **mapa** (no es necesario subirlo).")
+else:
+    st.warning("Aún no existe `data/potreros.csv`. Puedes **dibujarlo en el mapa** o subirlo acá.")
+
+
+
 with st.expander("📂 Cargar datos de entrada", expanded=True):
     pot_file = st.file_uploader("Archivo de potreros (CSV)", type=["csv"])
     req_file = st.file_uploader("Archivo de requerimientos (CSV)", type=["csv"])
@@ -341,6 +373,145 @@ def run_solver(nmax: int, mixmax: int, tol_pct: float, costo_ap_ton: int, tag: s
     # Éxito: returncode OK y archivos de salida presentes
     ok = (proc.returncode == 0) and csv_path.exists() and txt_path.exists()
     return proc, csv_path, txt_path, ok
+
+# === MAPA DE POTREROS (dibujar o cargar) ===
+import json
+import folium
+from streamlit_folium import st_folium
+from pyproj import Geod
+from shapely.geometry import shape
+
+GEOD = Geod(ellps="WGS84")
+POTREROS_GEOJSON = DATA_DIR / "potreros.geojson"
+POTREROS_CSV = DATA_DIR / "potreros.csv"
+
+with st.expander("🗺️ Mapa de potreros (dibujar o cargar)", expanded=False):
+    left, right = st.columns([3, 2])
+
+    # Panel derecho: centro y carga de GeoJSON
+    with right:
+        st.markdown("**Base del mapa**")
+        center_lat = st.number_input("Latitud centro", value=-34.50, step=0.01, format="%.6f")
+        center_lon = st.number_input("Longitud centro", value=-71.20, step=0.01, format="%.6f")
+        zoom = st.slider("Zoom", 8, 18, 14)
+
+        st.markdown("**Cargar GeoJSON (opcional)**")
+        up = st.file_uploader("Subir GeoJSON de potreros", type=["geojson", "json"])
+        if up:
+            try:
+                gj = json.loads(up.read().decode("utf-8"))
+                POTREROS_GEOJSON.write_text(json.dumps(gj, ensure_ascii=False), encoding="utf-8")
+                st.success("GeoJSON cargado y guardado en data/potreros.geojson ✅")
+            except Exception as e:
+                st.error(f"Error al leer GeoJSON: {e}")
+
+        st.caption("Tip: si no tienes GeoJSON, dibuja tus potreros directo en el mapa.")
+
+    # Panel izquierdo: mapa folium con herramienta de dibujo
+    with left:
+        m = folium.Map(location=[center_lat, center_lon], zoom_start=zoom, tiles="OpenStreetMap")
+        # Capa satélite (útil para ubicarse)
+        folium.TileLayer(
+            tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+            attr="Esri WorldImagery",
+            name="Satélite"
+        ).add_to(m)
+
+        # Si ya hay un GeoJSON guardado, dibujarlo
+        if POTREROS_GEOJSON.exists():
+            gj_prev = json.loads(POTREROS_GEOJSON.read_text(encoding="utf-8"))
+            folium.GeoJson(gj_prev, name="Potreros").add_to(m)
+
+        # Herramientas de dibujo
+        from folium.plugins import Draw
+        Draw(
+            draw_options={
+                "polyline": False, "rectangle": False, "circle": False,
+                "circlemarker": False, "marker": False, "polygon": True
+            },
+            edit_options={"edit": True, "remove": True}
+        ).add_to(m)
+        folium.LayerControl().add_to(m)
+
+        map_state = st_folium(m, width=700, height=520, returned_objects=["all_drawings"])
+
+    c1, c2 = st.columns(2)
+    # Botón: guardar dibujo como GeoJSON (acumula con lo previo)
+    with c1:
+        if st.button("💾 Guardar dibujo como GeoJSON"):
+            features = []
+            if POTREROS_GEOJSON.exists():
+                prev = json.loads(POTREROS_GEOJSON.read_text(encoding="utf-8"))
+                if prev.get("type") == "FeatureCollection":
+                    features.extend(prev.get("features", []))
+
+            nuevos = map_state.get("all_drawings") or []
+            for feat in nuevos:
+                geom = feat.get("geometry", {})
+                if geom and geom.get("type") == "Polygon":
+                    props = feat.get("properties") or {}
+                    # Si no tiene nombre, generar uno
+                    props.setdefault("potrero", f"Potrero_{len(features)+1}")
+                    # cultivo es opcional; se puede editar luego
+                    props.setdefault("cultivo", "SinCultivo")
+                    features.append({"type": "Feature", "properties": props, "geometry": geom})
+
+            if not features:
+                st.warning("No hay polígonos para guardar.")
+            else:
+                gj_new = {"type": "FeatureCollection", "features": features}
+                POTREROS_GEOJSON.write_text(json.dumps(gj_new, ensure_ascii=False), encoding="utf-8")
+                st.success("GeoJSON guardado en data/potreros.geojson ✅")
+
+    # Botón: calcular áreas (ha) y generar potreros.csv
+    with c2:
+        if st.button("🧮 Calcular áreas y crear potreros.csv"):
+            if not POTREROS_GEOJSON.exists():
+                st.warning("Primero guarda un GeoJSON.")
+            else:
+                gj = json.loads(POTREROS_GEOJSON.read_text(encoding="utf-8"))
+                filas = []
+                for f in gj.get("features", []):
+                    geom = f.get("geometry", {})
+                    if not geom or geom.get("type") != "Polygon":
+                        continue
+                    poly = shape(geom)
+                    lon, lat = poly.exterior.coords.xy
+                    area_m2, _ = GEOD.polygon_area_perimeter(lon, lat)
+                    area_ha = abs(area_m2) / 10_000.0
+                    potrero = f.get("properties", {}).get("potrero", "SinNombre")
+                    cultivo = f.get("properties", {}).get("cultivo", "SinCultivo")
+                    filas.append({"potrero": potrero, "cultivo": cultivo, "superficie_ha": round(area_ha, 3)})
+
+                if not filas:
+                    st.warning("No encontré polígonos válidos.")
+                else:
+                    dfpot = pd.DataFrame(filas)
+                    # Editor rápido para asignar cultivo desde requerimientos disponibles
+                    try:
+                        reqs = pd.read_csv(DATA_DIR / "requerimientos.csv", sep=None, engine="python")
+                        cultivos_posibles = sorted(reqs["cultivo"].unique().tolist())
+                    except Exception:
+                        cultivos_posibles = []
+                    st.markdown("### ✏️ Editar cultivos por potrero")
+                    if cultivos_posibles:
+                        dfpot["cultivo"] = dfpot["cultivo"].apply(
+                            lambda x: x if x in cultivos_posibles else (cultivos_posibles[0] if cultivos_posibles else x)
+                        )
+                        dfpot = st.data_editor(
+                            dfpot,
+                            num_rows="dynamic",
+                            column_config={
+                                "cultivo": st.column_config.SelectboxColumn(options=cultivos_posibles)
+                            },
+                            use_container_width=True
+                        )
+                    else:
+                        st.dataframe(dfpot, use_container_width=True)
+
+                    dfpot.to_csv(POTREROS_CSV, index=False, encoding="utf-8")
+                    st.success("✅ Generado/actualizado data/potreros.csv listo para el solver")
+
 
 
 # =============================
@@ -646,11 +817,11 @@ _Desarrollado por BData 🌾 – herramienta demo con PuLP + Streamlit_
         )
 
         st.download_button(
-            "📥 Descargar informe en chileno (PDF)",
+            "📥 Descargar informe ferilización BData (PDF)",
             data=pdf_bytes,
-            file_name="informe_en_chileno.pdf",
+            file_name="informe_fertilizacion_BData.pdf",
             mime="application/pdf",
             key="dl_pdf_chileno"
         )
 
-st.caption("Desarrollado por BData 🌾 | Demo técnico con PuLP + Streamlit")
+st.caption("Desarrollado por BData 🌾 | Digitalizando el campo Chileno")

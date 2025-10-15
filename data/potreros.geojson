@@ -1,0 +1,1 @@
+{"type": "FeatureCollection", "features": [{"type": "Feature", "properties": {"potrero": "Potrero_1", "cultivo": "SinCultivo"}, "geometry": {"type": "Polygon", "coordinates": [[[-71.196599, -34.497786], [-71.198702, -34.500332], [-71.197929, -34.500827], [-71.195612, -34.49821], [-71.196599, -34.497786]]]}}]}

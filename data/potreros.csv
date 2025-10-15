@@ -1,3 +1,2 @@
-potrero;superficie_ha;cultivo
-LoteA;12;Maiz
-LoteB;8;Trigo
+potrero,cultivo,superficie_ha
+Potrero_1,Maiz,3.349

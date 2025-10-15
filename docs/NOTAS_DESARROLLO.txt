@@ -1,0 +1,101 @@
+Contexto técnico – estado al 14/10/2025
+Objetivo
+
+Optimización de mezclas de fertilizantes por potrero (cumplimiento de N–P–K al menor costo) con comparación A/B entre escenarios.
+
+Cambios implementados hoy
+
+Reescritura completa de optim/solver.py con:
+
+Soporte A/B (parámetro --tag).
+
+Lector tolerante para CSV (detecta ; o ,, limpia BOM).
+
+Validaciones automáticas de columnas requeridas.
+
+Prechequeo de factibilidad antes de resolver el modelo:
+
+Detecta límites imposibles (por mixmax, nmax, dmax, tolerancia).
+
+Reporta diagnósticos detallados en consola y en “Logs” de Streamlit.
+
+Mejor manejo de errores (sale con sys.exit(2) para que Streamlit capture el fallo del escenario).
+
+app/optimizador.py actualizado:
+
+Muestra resultado parcial si A o B fallan.
+
+Mantiene compatibilidad con costos y resumenes en CLP.
+
+Deploy funcional vía Cloudflare + Streamlit Cloud con dominio:
+https://optimizador.bdata.cl
+
+Pendientes para mañana
+
+PDF automático con resumen de resultados A/B (usando reportlab).
+
+Revisión de mensajes en UI (cuando ambos escenarios fallan).
+
+Posible ajuste de parámetros por cultivo (tolerancia o N máx adaptativa).
+
+Enchulamiento con IA 
+
+(idea 1:podríamos agregar un bloque donde el usuario le pregunte al optimizador, por ejemplo:
+
+“¿Por qué el escenario B resultó más caro?”
+“¿Qué producto se usa más en los potreros con mayor diferencia?”
+
+Y el sistema responde con lenguaje natural usando los datos del modelo (dfAB, tot_por_pot, diff_prod) como contexto.
+👉 Se puede implementar con un modelo local tipo Llama.cpp o un endpoint OpenAI (según privacidad).
+
+idea 2: Asistente predictivo de parámetros
+
+Antes de ejecutar el solver, un modelo de regresión ligera (o IA de recomendación) podría sugerir valores iniciales de:
+
+N máx, Mezcla máx, Tolerancia,
+basado en cultivos, superficies y precios históricos.
+Esto haría que el usuario parta de una configuración “inteligente”.
+
+idea 3: Explicación visual inteligente
+
+Podemos usar IA para detectar patrones entre potreros:
+
+Agrupar potreros que responden parecido a cambios en N o mixmax.
+
+Generar una visualización con etiquetas automáticas del tipo:
+“Estos 3 potreros se comportan igual porque comparten cultivo y rango de N similar”.
+
+idea 4. Recomendador de mezcla óptima “interpretada”
+
+El modelo podría leer la salida del solver y generar texto tipo:
+
+“Para el cultivo de trigo en potrero Los Olivos, la mezcla recomendada reduce 5% de N pero aumenta 12% de P2O5, manteniendo K estable. Esto ahorra 2,3% del costo total sin perder rendimiento esperado.”
+
+Eso lo podríamos entrenar sobre ejemplos históricos o construir como prompt sobre los datos calculados.
+
+idea 5. Modo copiloto agrícola
+
+Una pestaña aparte en la app (“💬 Copiloto Agronómico”) donde el usuario pueda hablarle al sistema:
+
+“Quiero bajar el costo 10% sin perder mucho N, ¿qué me sugerís?”
+y la IA genera un nuevo set de parámetros Nmax, mixmax, tol, los aplica y corre el solver automáticamente.)
+
+Incluir boton o link en bdata.cl
+
+Incluir un manual de usuario
+
+(Opcional) Implementar slacks en el modelo para medir déficit exacto en cada nutriente cuando no hay solución factible.
+
+Cómo correr localmente
+# Entorno
+conda activate fertilizantes  # o venv equivalente
+streamlit run app/optimizador.py
+
+Cómo hacer deploy
+git add -A
+git commit -m "feat: versión estable con prechequeo de factibilidad"
+git push origin main
+
+
+Streamlit Cloud redeploya automáticamente.
+Listo para continuar mañana desde ese punto.
