@@ -1,27 +1,3 @@
-
-Inicializar repositorio y primer commit
-**Windows (PowerShell):**
-```powershell
-cd <carpeta-del-proyecto>
-git init
-git add .
-git commit -m "init: Streamlit optimizer + manual + PDF report"
-git branch -M main
-
-Crear repo en GitHub y conectar remoto
-git remote add origin git@github.com:<tu-usuario>/bdata-fert-opt.git
-git push -u origin main
-
-Con HTTPS:
-
-git remote add origin https://github.com/<tu-usuario>/bdata-fert-opt.git
-git push -u origin main
-
-git tag -a v0.1.0 -m "Primera demo usable"
-git push origin v0.1.0
-
-
-
 Contexto técnico – estado al 14/10/2025
 Objetivo
 
@@ -123,3 +99,72 @@ git push origin main
 
 Streamlit Cloud redeploya automáticamente.
 Listo para continuar mañana desde ese punto.
+
+
+NOTAS DE DESARROLLO – 15/10/2025
+🔧 Contexto técnico general
+
+Proyecto: Optimizador de mezclas de fertilizantes por potrero (cumplimiento N–P–K al menor costo)
+Stack: Streamlit + PuLP + ReportLab + Folium + PyProj + Shapely
+Comparación A/B entre escenarios con reportes en PDF y Markdown “en chileno”.
+
+🚀 Avances del día
+1. Reescritura total de app/optimizador.py
+
+Se incorporó bloque persistente en st.session_state para evitar errores (NameError) al recargar.
+
+Se añadió un bloque completo de interpretación agronómica en lenguaje natural, que explica resultados como:
+
+“La mezcla logra 98 % del requerimiento con predominio de DAP, apoyado por Urea. KCl no se usa porque no hay requerimiento de K.”
+
+Se implementó un informe “en chileno” descargable en PDF y Markdown:
+
+Incluye costos totales, diferencias A/B, potreros con mayor variación y productos predominantes.
+
+PDF diseñado con estética corporativa BData (verde agronómico, secciones claras, tabla de totales y mezcla).
+
+Se añadió manual largo (expandible) y modal flotante interactivo, ambos en la misma página.
+
+Se resolvió el bug del error de variables no definidas en reruns (okA, okB, csvA, etc.).
+
+Se añadió mecanismo antiduplicados (already_rendered) para evitar mostrar dos veces los mismos gráficos tras ejecutar escenarios.
+
+Integración completa con data/potreros.geojson editable desde mapa con Folium + Draw.
+
+2. Corrección de errores intermitentes
+
+Se detectó y solucionó el problema del error mostrado en Streamlit tras cambiar parámetros: provenía de referencias a variables fuera del contexto (ctx["okA"], etc.).
+
+Se encapsularon las rutas en Path y se verifican antes de uso.
+
+Flujo estabilizado para “Ejecutar escenarios A y B”.
+
+3. Estado actual de funcionalidades
+
+✅ Ejecución completa A y B
+✅ Reporte PDF y MD en chileno
+✅ Manual largo + modal
+✅ Persistencia tras rerun
+✅ Mapa de potreros interactivo
+✅ Lectura robusta de CSVs (coma o punto y coma)
+✅ Cálculo automático de áreas en GeoJSON
+
+
+📈 Pendientes inmediatos (para mañana)
+
+ Revisar estética del bloque de interpretación agronómica (negritas, color, emoji).
+
+ Agregar versión PDF del manual de usuario (opcional).
+
+ Unificar estilos visuales de todos los botones (“📥 Descargar…”).
+
+ Mejorar resumen de mezcla: incluir requerimientos cumplidos (%) y excedentes.
+
+ Testear casos infactibles (cuando no hay solución) y mostrar explicación amigable.
+
+ Versionar el repo con git y GitHub (estructura
+
+INCLUIR A LO MENOS UNA IA
+INCLUIR EN LA WEB DE BDATA.CL COMO"HERRAMIENTAS" O SIMIL (INCLUIR CALCURADORA ROI Y OPTIMIZACIÓN)
+
+***DE LOS PUNTOS ANTEIORES HACER LOS MÁS FÁCILES Y RÁPIDOS PRIMERO

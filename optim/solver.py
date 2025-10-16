@@ -24,8 +24,16 @@ parser.add_argument("--tol",     type=float, default=0.02)  # Tolerancia relativ
 parser.add_argument("--costoap", type=float, default=0.0)   # CLP por tonelada aplicada
 parser.add_argument("--out_csv", type=str,   default="")    # (compat) ignorado si usamos --tag
 parser.add_argument("--out_txt", type=str,   default="")    # (compat) ignorado si usamos --tag
-parser.add_argument("--tag",     type=str,   default="")    # 'A', 'B' o vacío
+parser.add_argument("--reqpath", type=str, default=None, help="Ruta a requerimientos.csv a usar (ajustado o base)")
 args = parser.parse_args()
+
+# === Definir rutas base ===
+BASE_DIR = Path(__file__).resolve().parent.parent
+DATA_DIR = BASE_DIR / "data"
+
+# 👇 NUEVO bloque: determina cuál archivo de requerimientos leer
+req_path = Path(args.reqpath) if args.reqpath else (DATA_DIR / "requerimientos.csv")
+requerimientos = pd.read_csv(req_path, sep=None, engine="python")
 
 # Rutas de salida según tag (A/B)
 tag_suffix = f"_{args.tag}" if args.tag else ""

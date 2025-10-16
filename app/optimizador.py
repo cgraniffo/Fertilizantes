@@ -46,7 +46,7 @@ SOLVER_PATH = BASE_DIR / "optim" / "solver.py"
 # Página
 # =============================
 st.set_page_config(
-    page_title="Optimizador de Fertilización | Boost Data",
+    page_title="Asistente de Fertilización Inteligente | Boost Data",
     page_icon=str(ASSETS_DIR / "favicon.png"),
     layout="wide",
 )
@@ -63,8 +63,7 @@ if "last_run" not in st.session_state:
         "tolA": None, "tolB": None,
     }
 if "already_rendered" not in st.session_state:
-    # evita duplicados entre el render inmediato post-ejecución y el render persistente
-    st.session_state["already_rendered"] = False
+    st.session_state["already_rendered"] = False  # evita duplicados tras ejecutar
 
 # --- Sentinelas para evitar NameError en reruns
 okA = okB = False
@@ -177,20 +176,30 @@ with c1:
     except Exception:
         st.write("")
 with c2:
-    st.title("Optimizador de Fertilización")
+    st.title("Asistente de Fertilización Inteligente")
     st.markdown('<div class="bdata-claim">Planifica mezclas óptimas por potrero, cumpliendo N–P–K al menor costo.</div>', unsafe_allow_html=True)
 st.markdown('<div class="bdata-divider"></div>', unsafe_allow_html=True)
 
+
+
+
+
+
+
 # =============================
-# Manual largo (en página)
+# 1️⃣ Manual rápido (en página)
 # =============================
-with st.expander("📘 Manual rápido para el agricultor", expanded=False):
+
+st.info("📘 Aquí tienes una guía rápida de cómo usar el asistente. No necesitas leerlo completo ahora; puedes volver cuando quieras repasar formatos o ejemplos.")
+
+with st.expander("1️⃣ Manual rápido para el agricultor📖", expanded=False):
     st.markdown(dedent("""
+    Solo necesitas leer esto si quieres entender cómo funciona el cálculo detrás.
     ### 🧭 ¿Qué hace esta herramienta?
     Planifica **mezclas óptimas de fertilizantes por potrero** cumpliendo **N, P₂O₅ y K₂O** al **menor costo**.  
     Optimiza dosis por producto y respeta límites de mezcla y N máx.
 
-    ---
+    --- 
 
     ### 🪴 Flujo de trabajo
     1. **Mapa** → Dibuja potreros y presiona **“Calcular áreas y crear potreros.csv”**.  
@@ -198,110 +207,321 @@ with st.expander("📘 Manual rápido para el agricultor", expanded=False):
     3. **Parámetros A/B** → Ajusta **N máx**, **Mezcla máx** y **Tolerancia**.  
     4. **Ejecutar 🚜** → Compara costos, tablas y gráficos. Exporta CSV/Markdown/PDF.
 
-    ---
+    --- 
 
-    ### 📂 Archivos y formatos (a prueba de errores)
+    ### 📂 Archivos y formatos
 
-    **potreros.csv**  *(se genera automáticamente desde el mapa)*  
-    Columnas obligatorias:
-    - `potrero` (texto) – nombre/ID del potrero  
-    - `cultivo` (texto) – debe existir en `requerimientos.csv`  
-    - `superficie_ha` (número) – hectáreas del polígono
-
-    **Ejemplo**
-    ```
-    potrero,cultivo,superficie_ha
-    Potrero_1,Trigo,12.53
-    Potrero_2,Maiz,8.10
-    ```
+    **potreros.csv** *(se genera desde el mapa)*  
+    Columnas: `potrero, cultivo, superficie_ha`.
 
     **productos.csv**  
-    Columnas obligatorias:
-    - `producto` (texto)
-    - `N_pct`, `P2O5_pct`, `K2O_pct` (0–100, % de nutriente)
-    - `precio_CLP_ton` (CLP/ton)
-    - `dosis_min_kg_ha`, `dosis_max_kg_ha` (kg/ha)
-
-    **Ejemplo**
-    ```
-    producto,N_pct,P2O5_pct,K2O_pct,precio_CLP_ton,dosis_min_kg_ha,dosis_max_kg_ha
-    Urea,46,0,0,450000,0,300
-    MAP,11,52,0,620000,0,250
-    KCl,0,0,60,380000,0,250
-    ```
+    Columnas: `producto, N_pct, P2O5_pct, K2O_pct, precio_CLP_ton, dosis_min_kg_ha, dosis_max_kg_ha`.
 
     **requerimientos.csv**  
-    Columnas obligatorias:
-    - `cultivo`
-    - `N_req_kg_ha`, `P2O5_req_kg_ha`, `K2O_req_kg_ha` (kg/ha)
+    Columnas: `cultivo, N_req_kg_ha, P2O5_req_kg_ha, K2O_req_kg_ha`.
 
-    **Ejemplo**
-    ```
-    cultivo,N_req_kg_ha,P2O5_req_kg_ha,K2O_req_kg_ha
-    Trigo,160,70,0
-    Maiz,180,60,80
-    ```
+    --- 
 
-    > La app corrige encabezados comunes (p. ej. `P205_req_kg_ha` → `P2O5_req_kg_ha`) y admite `;` o `,` como separador.
+    ### ⚙️ Parámetros
+    - **N máx (kg/ha)**, **Mezcla máx (kg/ha)**, **Tolerancia (%)**.
 
-    ---
+    --- 
 
-    ### ⚙️ Parámetros (cómo elegirlos)
-    - **N máx (kg/ha):** tope de N por hectárea. Si está muy bajo, no se cumple y sube el costo.  
-    - **Mezcla máx (kg/ha):** kilos/ha aplicables por pasada (limitación del equipo).  
-    - **Tolerancia (%):** permite quedar bajo el requerimiento por un pequeño margen (2% → se pide 98%).  
-    - **Costo de aplicación (CLP/ton, opcional):** se suma al objetivo si lo activas.
+    ### 🧯 Diagnóstico rápido
+    Sube tolerancia, mezcla o relaja N máx si el modelo queda infactible; revisa dosis mín/máx y que existan fuentes N/P/K.
 
-    **Sugerencias iniciales**
-    - Tolerancia: 1–3%  
-    - Mezcla máx: 400–700 kg/ha (según maquinaria)  
-    - N máx: acorde a la recomendación técnica del cultivo/zona
-
-    ---
-
-    ### 🧠 Glosario
-    - **Infactible / Infeasible:** no hay combinación que cumpla todo. Causas típicas: mezcla máx muy baja, N máx muy bajo, dosis mín altas, o falta de algún nutriente en `productos.csv`.  
-    - **Requerimiento efectivo:** requerimiento × (1 − tolerancia).  
-    - **Dosis mín/máx:** bandas por producto. La suma de mínimos es una cota mínima de mezcla total.  
-    - **Costo total:** ∑(kg/ha × superficie × precio/ton / 1000) + costo de aplicación si corresponde.
-
-    ---
-
-    ### 🧯 Diagnóstico cuando falla
-    1. **Aumenta Tolerancia:** de 1% → 2–3%.  
-    2. **Sube Mezcla máx:** revisa que **∑ dmin** de los productos no exceda la mezcla.  
-    3. **Relaja N máx:** si el cultivo exige alto N.  
-    4. **Revisa productos:** que existan fuentes de los 3 nutrientes que necesitas.  
-    5. **Chequea cultivos:** cada `cultivo` en `potreros.csv` debe estar en `requerimientos.csv`.
-
-    > El solver hace un **pre-chequeo** y puede avisar: “Potrero X: P2O5 requerido 80 > P máximo alcanzable 62 (mixmax/dmax).”
-
-    ---
-
-    ### 💡 Buenas prácticas
-    - Deja `dosis_min_kg_ha` en 0 salvo que quieras forzar uso.  
-    - Evita `dosis_max_kg_ha` muy bajas si tu **mezcla máx** ya está apretada.  
-    - Trabaja A/B: A = práctica estándar, B = hipótesis (más mezcla, otra tolerancia, etc.).  
-    - Mira “Diferencia (B−A)” por potrero y por producto: verás dónde el modelo ajusta la mezcla.
-
-    ---
-
-    ### ❓FAQs rápidas
-    - **¿Tengo que subir `potreros.csv`?** No, se genera desde el mapa.  
-    - **¿Puedo cargar mis polígonos?** Sí, en “Cargar GeoJSON”.  
-    - **¿Qué pasa si cambio el mapa?** Pulsa “Calcular áreas…” de nuevo.  
-    - **¿Por qué B es más caro?** Más restricciones (menos mezcla / menos N / menor tolerancia).  
-    - **¿Por qué B es más barato?** Más holgura → combinación más eficiente.
-
-    ---
+    --- 
 
     ### 🧾 Salidas y reportes
-    - **CSV** con dosis A/B por potrero y producto.  
-    - **Markdown/PDF** “en chileno” con costos, diferencias y lectura simple.
-
-    Desarrollado por **BData 🌾** — Optimizando la fertilización con ciencia de datos.
+    CSV + Markdown/PDF “en chileno”.
     """))
 
+# =============================
+# 2️⃣ Cargar datos de entrada
+# =============================
+st.info("📦 En este paso cargas tus archivos base: potreros, requerimientos y productos. Son los insumos mínimos para que el modelo calcule la mezcla.")
+
+with st.expander("2️⃣ Cargar datos de entrada📂", expanded=False):
+    state = exists_local_inputs()
+    st.markdown("**Estado de archivos en `data/`:**")
+    cols = st.columns(3)
+    cols[0].markdown(f"- potreros.csv: {'✅' if 'potreros' in state else '❌'}")
+    cols[1].markdown(f"- requerimientos.csv: {'✅' if 'requerimientos' in state else '❌'}")
+    cols[2].markdown(f"- productos.csv: {'✅' if 'productos' in state else '❌'}")
+
+    if 'potreros' in state:
+        st.info("Usando **potreros.csv** generado desde el **mapa** (no necesitas subirlo).")
+    else:
+        st.warning("Aún no existe `data/potreros.csv`. Puedes **dibujarlo en el mapa** o subirlo acá.")
+
+    pot_file = st.file_uploader("Archivo de potreros (CSV)", type=["csv"])
+    req_file = st.file_uploader("Archivo de requerimientos (CSV)", type=["csv"])
+    prod_file = st.file_uploader("Archivo de productos (CSV)", type=["csv"])
+
+    if st.button("Guardar archivos", key="save_inputs"):
+        for uploaded, name in [(pot_file, "potreros.csv"),
+                               (req_file, "requerimientos.csv"),
+                               (prod_file, "productos.csv")]:
+            if uploaded:
+                with open(DATA_DIR / name, "wb") as f:
+                    f.write(uploaded.getbuffer())
+                st.success(f"{name} guardado correctamente ✅")
+
+# =============================
+# 3️⃣ Mapa de potreros (dibujar o cargar)
+# =============================
+st.info("🗺️ Dibuja o carga tus potreros. El sistema calculará las superficies automáticamente y guardará el archivo listo para usar en el optimizador.")
+
+with st.expander("3️⃣ Mapa de potreros (dibujar o cargar)🌎", expanded=False):
+    import json
+    import folium
+    from streamlit_folium import st_folium
+    from pyproj import Geod
+    from shapely.geometry import shape
+    GEOD = Geod(ellps="WGS84")
+    POTREROS_GEOJSON = DATA_DIR / "potreros.geojson"
+    POTREROS_CSV = DATA_DIR / "potreros.csv"
+
+    left, right = st.columns([3, 2])
+    with right:
+        st.markdown("**Base del mapa**")
+        center_lat = st.number_input("Latitud centro", value=-34.50, step=0.01, format="%.6f")
+        center_lon = st.number_input("Longitud centro", value=-71.20, step=0.01, format="%.6f")
+        zoom = st.slider("Zoom", 8, 18, 14)
+
+        st.markdown("**Cargar GeoJSON (opcional)**")
+        up = st.file_uploader("Subir GeoJSON de potreros", type=["geojson", "json"])
+        if up:
+            try:
+                gj = json.loads(up.read().decode("utf-8"))
+                POTREROS_GEOJSON.write_text(json.dumps(gj, ensure_ascii=False), encoding="utf-8")
+                st.success("GeoJSON cargado y guardado en data/potreros.geojson ✅")
+            except Exception as e:
+                st.error(f"Error al leer GeoJSON: {e}")
+
+        st.caption("Tip: si no tienes GeoJSON, dibuja tus potreros directo en el mapa.")
+
+    with left:
+        m = folium.Map(location=[center_lat, center_lon], zoom_start=zoom, tiles="OpenStreetMap")
+        folium.TileLayer(
+            tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+            attr="Esri WorldImagery", name="Satélite").add_to(m)
+        if POTREROS_GEOJSON.exists():
+            gj_prev = json.loads(POTREROS_GEOJSON.read_text(encoding="utf-8"))
+            folium.GeoJson(gj_prev, name="Potreros").add_to(m)
+        from folium.plugins import Draw
+        Draw(draw_options={"polyline": False, "rectangle": False, "circle": False,
+                           "circlemarker": False, "marker": False, "polygon": True},
+             edit_options={"edit": True, "remove": True}).add_to(m)
+        folium.LayerControl().add_to(m)
+        map_state = st_folium(m, width=700, height=520, returned_objects=["all_drawings"])
+
+    c1, c2 = st.columns(2)
+    with c1:
+        if st.button("💾 Guardar dibujo como GeoJSON"):
+            features = []
+            if POTREROS_GEOJSON.exists():
+                prev = json.loads(POTREROS_GEOJSON.read_text(encoding="utf-8"))
+                if prev.get("type") == "FeatureCollection":
+                    features.extend(prev.get("features", []))
+            nuevos = map_state.get("all_drawings") or []
+            for feat in nuevos:
+                geom = feat.get("geometry", {})
+                if geom and geom.get("type") == "Polygon":
+                    props = feat.get("properties") or {}
+                    props.setdefault("potrero", f"Potrero_{len(features)+1}")
+                    props.setdefault("cultivo", "SinCultivo")
+                    features.append({"type": "Feature", "properties": props, "geometry": geom})
+            if not features:
+                st.warning("No hay polígonos para guardar.")
+            else:
+                gj_new = {"type": "FeatureCollection", "features": features}
+                POTREROS_GEOJSON.write_text(json.dumps(gj_new, ensure_ascii=False), encoding="utf-8")
+                st.success("GeoJSON guardado en data/potreros.geojson ✅")
+    with c2:
+        if st.button("🧮 Calcular áreas y crear potreros.csv"):
+            if not POTREROS_GEOJSON.exists():
+                st.warning("Primero guarda un GeoJSON.")
+            else:
+                gj = json.loads(POTREROS_GEOJSON.read_text(encoding="utf-8"))
+                filas = []
+                for f in gj.get("features", []):
+                    geom = f.get("geometry", {})
+                    if not geom or geom.get("type") != "Polygon":
+                        continue
+                    poly = shape(geom)
+                    lon, lat = poly.exterior.coords.xy
+                    area_m2, _ = GEOD.polygon_area_perimeter(lon, lat)
+                    area_ha = abs(area_m2) / 10_000.0
+                    potrero = f.get("properties", {}).get("potrero", "SinNombre")
+                    cultivo = f.get("properties", {}).get("cultivo", "SinCultivo")
+                    filas.append({"potrero": potrero, "cultivo": cultivo, "superficie_ha": round(area_ha, 3)})
+                if not filas:
+                    st.warning("No encontré polígonos válidos.")
+                else:
+                    dfpot = pd.DataFrame(filas)
+                    try:
+                        reqs = pd.read_csv(DATA_DIR / "requerimientos.csv", sep=None, engine="python")
+                        cultivos_posibles = sorted(reqs["cultivo"].unique().tolist())
+                    except Exception:
+                        cultivos_posibles = []
+                    st.markdown("### ✏️ Editar cultivos por potrero")
+                    if cultivos_posibles:
+                        dfpot["cultivo"] = dfpot["cultivo"].apply(
+                            lambda x: x if x in cultivos_posibles else (cultivos_posibles[0] if cultivos_posibles else x)
+                        )
+                        dfpot = st.data_editor(
+                            dfpot, num_rows="dynamic",
+                            column_config={"cultivo": st.column_config.SelectboxColumn(options=cultivos_posibles)},
+                            use_container_width=True
+                        )
+                    else:
+                        st.dataframe(dfpot, use_container_width=True)
+                    dfpot.to_csv(POTREROS_CSV, index=False, encoding="utf-8")
+                    st.success("✅ Generado/actualizado data/potreros.csv listo para el solver")
+
+# =============================
+# 4️⃣ Análisis de suelo (opcional) – PASO 2
+# =============================
+st.info("🌾 Si tienes análisis de suelo, ingrésalos acá. El sistema ajustará automáticamente los requerimientos por potrero. Si no, puedes seguir sin este paso.")
+
+from textwrap import dedent as _dedent
+with st.expander("4️⃣ Análisis de suelo (opcional)🧪", expanded=False):
+    SUELO_CSV = DATA_DIR / "analisis_suelo.csv"
+    REQ_AJUSTADOS_CSV = DATA_DIR / "requerimientos_ajustados_por_potrero.csv"
+
+    st.markdown(_dedent("""
+    **¿Para qué sirve?**  
+    Si ingresas el **aporte del suelo (kg/ha)** por potrero, calculamos **requerimientos ajustados**:
+    `requerimiento_ajustado = max(0, requerimiento - suelo)` para **N, P₂O₅ y K₂O**.
+
+    Esto **no cambia** aún el solver: solo guarda un CSV con los ajustes por potrero y te muestra el efecto.
+    En el **PASO 3** podremos conectar esto al modelo para correr A/B con suelo incorporado.
+    """))
+
+    tiene_potreros = (DATA_DIR / "potreros.csv").exists()
+    tiene_reqs     = (DATA_DIR / "requerimientos.csv").exists()
+
+    if not (tiene_potreros and tiene_reqs):
+        st.warning("Para usar esta sección, asegúrate de tener `data/potreros.csv` y `data/requerimientos.csv`.")
+        st.stop()
+
+    df_potr = read_csv_flexible(DATA_DIR / "potreros.csv")
+    df_req  = read_csv_flexible(DATA_DIR / "requerimientos.csv")
+
+    cols_potr_ok = {"potrero", "cultivo", "superficie_ha"}
+    cols_req_ok  = {"cultivo", "N_req_kg_ha", "P2O5_req_kg_ha", "K2O_req_kg_ha"}
+    faltan_potr = cols_potr_ok - set(df_potr.columns)
+    faltan_req  = cols_req_ok - set(df_req.columns)
+    if faltan_potr:
+        st.error(f"`potreros.csv` no trae columnas requeridas: {sorted(faltan_potr)}")
+        st.stop()
+    if faltan_req:
+        st.error(f"`requerimientos.csv` no trae columnas requeridas: {sorted(faltan_req)}")
+        st.stop()
+
+    base_suelo = df_potr[["potrero","cultivo","superficie_ha"]].copy()
+    base_suelo["N_suelo_kg_ha"]    = 0.0
+    base_suelo["P2O5_suelo_kg_ha"] = 0.0
+    base_suelo["K2O_suelo_kg_ha"]  = 0.0
+
+    if SUELO_CSV.exists():
+        try:
+            prev = read_csv_flexible(SUELO_CSV)
+            base_suelo = base_suelo.merge(
+                prev[["potrero","N_suelo_kg_ha","P2O5_suelo_kg_ha","K2O_suelo_kg_ha"]],
+                on="potrero", how="left", suffixes=("","_prev")
+            )
+            for col in ["N_suelo_kg_ha","P2O5_suelo_kg_ha","K2O_suelo_kg_ha"]:
+                if col + "_prev" in base_suelo.columns:
+                    base_suelo[col] = base_suelo[col + "_prev"].fillna(base_suelo[col])
+                    base_suelo.drop(columns=[col + "_prev"], inplace=True)
+        except Exception as e:
+            st.warning(f"No se pudo leer `analisis_suelo.csv` previo: {e}")
+
+    st.markdown("#### 1) Cargar CSV de suelo (opcional)")
+    st.caption("Formato esperado: potrero, N_suelo_kg_ha, P2O5_suelo_kg_ha, K2O_suelo_kg_ha")
+    up_suelo = st.file_uploader("Subir análisis de suelo por potrero (CSV)", type=["csv"], key="suelo_csv_up")
+    if up_suelo:
+        try:
+            df_up = pd.read_csv(up_suelo, sep=None, engine="python")
+            must = {"potrero","N_suelo_kg_ha","P2O5_suelo_kg_ha","K2O_suelo_kg_ha"}
+            if not must.issubset(set(df_up.columns)):
+                st.error(f"El CSV debe incluir estas columnas: {sorted(must)}")
+            else:
+                base_suelo = base_suelo.drop(columns=["N_suelo_kg_ha","P2O5_suelo_kg_ha","K2O_suelo_kg_ha"])
+                base_suelo = base_suelo.merge(
+                    df_up[list(must)], on="potrero", how="left"
+                )
+                for col in ["N_suelo_kg_ha","P2O5_suelo_kg_ha","K2O_suelo_kg_ha"]:
+                    base_suelo[col] = base_suelo[col].fillna(0.0)
+                st.success("Análisis de suelo cargado desde CSV ✅")
+        except Exception as e:
+            st.error(f"Error leyendo CSV de suelo: {e}")
+
+    st.markdown("#### 2) Editar/ingresar suelo manualmente (kg/ha)")
+    st.caption("Si no tienes CSV, edita directo acá. Los valores son **kg/ha disponibles** por potrero.")
+    suelo_edit = st.data_editor(
+        base_suelo,
+        use_container_width=True,
+        num_rows="fixed",
+        column_config={
+            "N_suelo_kg_ha":    st.column_config.NumberColumn(step=1.0, min_value=0.0),
+            "P2O5_suelo_kg_ha": st.column_config.NumberColumn(step=1.0, min_value=0.0),
+            "K2O_suelo_kg_ha":  st.column_config.NumberColumn(step=1.0, min_value=0.0),
+        },
+        key="soil_editor",
+    )
+
+    c_s1, c_s2 = st.columns([1,1])
+    with c_s1:
+        if st.button("💾 Guardar análisis de suelo en data/analisis_suelo.csv"):
+            try:
+                cols_keep = ["potrero","N_suelo_kg_ha","P2O5_suelo_kg_ha","K2O_suelo_kg_ha"]
+                suelo_edit[cols_keep].to_csv(SUELO_CSV, index=False, encoding="utf-8")
+                st.success("Guardado `data/analisis_suelo.csv` ✅")
+            except Exception as e:
+                st.error(f"No se pudo guardar: {e}")
+
+    st.markdown("#### 3) Previsualizar requerimientos ajustados (por potrero)")
+    st.caption("Regla simple: ajustado = max(0, requerimiento_por_cultivo − suelo_por_potrero)")
+
+    req_map = df_potr.merge(df_req, on="cultivo", how="left")
+    req_map = req_map.merge(
+        suelo_edit[["potrero","N_suelo_kg_ha","P2O5_suelo_kg_ha","K2O_suelo_kg_ha"]],
+        on="potrero", how="left"
+    ).fillna({"N_suelo_kg_ha":0.0,"P2O5_suelo_kg_ha":0.0,"K2O_suelo_kg_ha":0.0})
+
+    req_map["N_req_aj_kg_ha"]    = (req_map["N_req_kg_ha"]    - req_map["N_suelo_kg_ha"]).clip(lower=0.0)
+    req_map["P2O5_req_aj_kg_ha"] = (req_map["P2O5_req_kg_ha"] - req_map["P2O5_suelo_kg_ha"]).clip(lower=0.0)
+    req_map["K2O_req_aj_kg_ha"]  = (req_map["K2O_req_kg_ha"]  - req_map["K2O_suelo_kg_ha"]).clip(lower=0.0)
+
+    vista = req_map[[
+        "potrero","cultivo","superficie_ha",
+        "N_req_kg_ha","P2O5_req_kg_ha","K2O_req_kg_ha",
+        "N_suelo_kg_ha","P2O5_suelo_kg_ha","K2O_suelo_kg_ha",
+        "N_req_aj_kg_ha","P2O5_req_aj_kg_ha","K2O_req_aj_kg_ha",
+    ]].copy()
+
+    st.dataframe(vista, use_container_width=True)
+
+    st.markdown("##### Guardar salida de requerimientos ajustados por potrero")
+    st.caption("Este archivo es solo **por potrero**. En el PASO 3 lo conectaremos al solver.")
+    if st.button("📥 Guardar `data/requerimientos_ajustados_por_potrero.csv`"):
+        try:
+            out_cols = ["potrero","cultivo","superficie_ha",
+                        "N_req_aj_kg_ha","P2O5_req_aj_kg_ha","K2O_req_aj_kg_ha"]
+            vista[out_cols].to_csv(REQ_AJUSTADOS_CSV, index=False, encoding="utf-8")
+            st.success("Escrito `data/requerimientos_ajustados_por_potrero.csv` ✅")
+        except Exception as e:
+            st.error(f"No se pudo escribir la salida: {e}")
+
+    st.info(_dedent("""
+    **Notas prácticas**
+    - Los valores de suelo son **kg/ha disponibles** (no ppm). Si tienes ppm, conviértelo antes (PASO 2 simple).
+    - En el PASO 3 agregaremos conversiones desde ppm por método (Olsen/Bray, profundidad, densidad aparente, %eficiencia).
+    - Si un potrero queda con requerimiento 0 en un nutriente, el modelo (cuando lo conectemos) no debería forzar ese nutriente.
+    """))
 
 # =============================
 # Helpers
@@ -338,6 +558,184 @@ def df_to_md_table(df: pd.DataFrame) -> str:
         vals = [str(x) for x in row.tolist()]
         lines.append("| " + " | ".join(vals) + " |")
     return "\n".join(lines)
+
+# =============================
+# UX: Progreso "fantasma" por pasos (solo informativo)
+# =============================
+from pathlib import Path as _Path2  # alias para no chocar con otros imports
+
+def _files_ok() -> dict:
+    """Chequeo rápido de archivos base en data/."""
+    paths = {
+        "potreros": DATA_DIR / "potreros.csv",
+        "requerimientos": DATA_DIR / "requerimientos.csv",
+        "productos": DATA_DIR / "productos.csv",
+        "suelo": DATA_DIR / "analisis_suelo.csv",
+    }
+    return {k: p.exists() for k, p in paths.items()}
+
+def compute_progress(ctx: dict) -> tuple[int, int, list[str]]:
+    """
+    Devuelve (hechos, total_obligatorios, etiquetas_hechas) para la barrita de progreso.
+    Contamos pasos obligatorios: 2 (carga 3 CSV), 3 (mapa/potreros.csv), 6 (parametrización lista),
+    7 (ejecutado al menos un escenario).
+    """
+    files = _files_ok()
+    hechos = []
+    total = 4  # 2,3,6,7
+
+    # Paso 2: Cargar datos (potreros, requerimientos y productos)
+    if files["potreros"] and files["requerimientos"] and files["productos"]:
+        hechos.append("2")
+
+    # Paso 3: Mapa / existencia de potreros.csv
+    if files["potreros"]:
+        hechos.append("3")
+
+    # Paso 6: Parámetros (los consideramos listos: hay defaults en la UI)
+    hechos.append("6")
+
+    # Paso 7: Ejecutar A/B (con que uno resulte)
+    if bool(ctx.get("okA")) or bool(ctx.get("okB")):
+        hechos.append("7")
+
+    return len(set(hechos)), total, hechos
+
+
+# Barra de progreso del flujo (no bloqueante)
+#ctx_last = st.session_state.get("last_run", {}) or {}
+#done, total, _labels = compute_progress(ctx_last)
+#pct = int(round(100 * done / total)) if total else 0
+#st.progress(pct, text=f"Progreso del flujo: {done} de {total} pasos obligatorios completados ✅")
+
+#st.markdown("### 🧠 Flujo recomendado de trabajo")
+# =============================
+# FLUJO GUIADO PASO A PASO
+# =============================
+
+
+# Luego vienen los textos del flujo (1️⃣, 2️⃣, 3️⃣, etc)
+
+#st.markdown("""
+#🔵1️⃣ **Manual rápido 📖:** conoce los pasos y formatos.  
+#🔵2️⃣ **Carga datos de entrada 📂:** potreros, requerimientos y productos.  
+#🔵3️⃣ **Mapa de potreros 🌎.**  
+#🔘4️⃣ **Análisis de suelo (opcional) 🧪.**  
+#🔘5️⃣ **Configuración del análisis de suelo ⚙️.**  
+#🔵6️⃣ **Parámetros de optimización 💻.**  
+#🔵7️⃣ **Ejecutar escenarios 🚜.**  
+#🔵8️⃣ **Exportar reportes 📊.**
+#""")
+# =============================
+# Suelo: funciones base (NO modifican el flujo actual)
+# =============================
+from dataclasses import dataclass
+import math
+
+@dataclass
+class SoilCreditParams:
+    bd_g_cm3: float = 1.3
+    depth_cm: float = 20.0
+    use_ppm: bool = True
+    fN: float = 0.4
+    fP2O5: float = 0.4
+    fK2O: float = 0.6
+
+def _ppm_to_kg_ha(ppm: float, bd_g_cm3: float = 1.3, depth_cm: float = 20.0) -> float:
+    if ppm is None or (isinstance(ppm, float) and math.isnan(ppm)):
+        return 0.0
+    return float(ppm) * bd_g_cm3 * depth_cm * 0.1
+
+def _element_to_oxide_P(P_kg_ha: float) -> float:
+    return float(P_kg_ha) * 2.29
+
+def _element_to_oxide_K(K_kg_ha: float) -> float:
+    return float(K_kg_ha) * 1.2
+
+def normalize_soil_inputs(soil_row: dict, params: SoilCreditParams) -> dict:
+    direct_N = soil_row.get("N_kg_ha")
+    direct_P2O5 = soil_row.get("P2O5_kg_ha")
+    direct_K2O = soil_row.get("K2O_kg_ha")
+    if direct_N is not None or direct_P2O5 is not None or direct_K2O is not None:
+        return {
+            "N_credito_kg_ha": float(direct_N or 0.0),
+            "P2O5_credito_kg_ha": float(direct_P2O5 or 0.0),
+            "K2O_credito_kg_ha": float(direct_K2O or 0.0),
+        }
+    N_ppm = soil_row.get("NO3_ppm")
+    if N_ppm is None:
+        N_ppm = soil_row.get("N_ppm")
+    P_ppm = soil_row.get("P_ppm")
+    K_ppm = soil_row.get("K_ppm")
+
+    N_kg_ha = _ppm_to_kg_ha(N_ppm or 0.0, params.bd_g_cm3, params.depth_cm) if params.use_ppm else float(N_ppm or 0.0)
+    P_kg_ha = _ppm_to_kg_ha(P_ppm or 0.0, params.bd_g_cm3, params.depth_cm) if params.use_ppm else float(P_ppm or 0.0)
+    K_kg_ha = _ppm_to_kg_ha(K_ppm or 0.0, params.bd_g_cm3, params.depth_cm) if params.use_ppm else float(K_ppm or 0.0)
+
+    P2O5_kg_ha = _element_to_oxide_P(P_kg_ha)
+    K2O_kg_ha  = _element_to_oxide_K(K_kg_ha)
+
+    return {
+        "N_credito_kg_ha": N_kg_ha,
+        "P2O5_credito_kg_ha": P2O5_kg_ha,
+        "K2O_credito_kg_ha": K2O_kg_ha,
+    }
+
+def apply_soil_credits_to_requirements(req_df: pd.DataFrame, soil_df_or_dict, params: SoilCreditParams) -> pd.DataFrame:
+    out = req_df.copy()
+
+    def _descontar(row, creditos):
+        N_adj = max(0.0, float(row["N_req_kg_ha"])    - params.fN    * creditos["N_credito_kg_ha"])
+        P_adj = max(0.0, float(row["P2O5_req_kg_ha"]) - params.fP2O5 * creditos["P2O5_credito_kg_ha"])
+        K_adj = max(0.0, float(row["K2O_req_kg_ha"])  - params.fK2O  * creditos["K2O_credito_kg_ha"])
+        return pd.Series({
+            "N_req_aj_kg_ha": N_adj,
+            "P2O5_req_aj_kg_ha": P_adj,
+            "K2O_req_aj_kg_ha": K_adj
+        })
+
+    if isinstance(soil_df_or_dict, dict):
+        cred_global = normalize_soil_inputs(soil_df_or_dict, params)
+        aj = out.apply(lambda r: _descontar(r, cred_global), axis=1)
+        for c in aj.columns:
+            out[c] = aj[c]
+        return out
+
+    if isinstance(soil_df_or_dict, pd.DataFrame):
+        if "potrero" not in out.columns:
+            row_avg = {}
+            for k in ["NO3_ppm","N_ppm","P_ppm","K_ppm","N_kg_ha","P2O5_kg_ha","K2O_kg_ha"]:
+                if k in soil_df_or_dict.columns:
+                    row_avg[k] = float(soil_df_or_dict[k].dropna().mean())
+            cred = normalize_soil_inputs(row_avg, params)
+            aj = out.apply(lambda r: _descontar(r, cred), axis=1)
+            for c in aj.columns:
+                out[c] = aj[c]
+            return out
+        else:
+            soil_min = soil_df_or_dict.copy()
+            keep_cols = [c for c in soil_min.columns if c in
+                         ["potrero","NO3_ppm","N_ppm","P_ppm","K_ppm","N_kg_ha","P2O5_kg_ha","K2O_kg_ha"]]
+            soil_min = soil_min[keep_cols]
+            out = out.merge(soil_min, on="potrero", how="left")
+            def _row_apply(r):
+                soil_row = {k: r.get(k) for k in keep_cols if k != "potrero"}
+                cred = normalize_soil_inputs(soil_row, params)
+                return _descontar(r, cred)
+            aj = out.apply(_row_apply, axis=1)
+            for c in aj.columns:
+                out[c] = aj[c]
+            return out
+    return out
+
+def choose_requirements_for_solver(req_df: pd.DataFrame, use_adjusted: bool = True) -> pd.DataFrame:
+    out = req_df.copy()
+    def _pick(base, aj):
+        return out[aj] if aj in out.columns else out[base]
+    out["N_req_final_kg_ha"]    = _pick("N_req_kg_ha",    "N_req_aj_kg_ha")
+    out["P2O5_req_final_kg_ha"] = _pick("P2O5_req_kg_ha", "P2O5_req_aj_kg_ha")
+    out["K2O_req_final_kg_ha"]  = _pick("K2O_req_kg_ha",  "K2O_req_aj_kg_ha")
+    return out
 
 # =============================
 # PDF helpers
@@ -445,331 +843,240 @@ def build_pdf_reporte_chileno(
     return buf.getvalue()
 
 # =============================
-# Subida de archivos
+# 🔁 Toggle: usar análisis de suelo en el solver
 # =============================
-state = exists_local_inputs()
-st.markdown("**Estado de archivos en `data/`:**")
-cols = st.columns(3)
-cols[0].markdown(f"- potreros.csv: {'✅' if 'potreros' in state else '❌'}")
-cols[1].markdown(f"- requerimientos.csv: {'✅' if 'requerimientos' in state else '❌'}")
-cols[2].markdown(f"- productos.csv: {'✅' if 'productos' in state else '❌'}")
+st.info("⚙️ Aquí decides si el optimizador debe usar los aportes del suelo. Puedes activar o desactivar este ajuste antes de ejecutar los escenarios.")
 
-if 'potreros' in state:
-    st.info("Usando **potreros.csv** generado desde el **mapa** (no necesitas subirlo).")
-else:
-    st.warning("Aún no existe `data/potreros.csv`. Puedes **dibujarlo en el mapa** o subirlo acá.")
+with st.expander("5️⃣ Configuración del análisis de suelo en el solver ⚙", expanded=False):
+    st.markdown("""
+    Puedes decidir si el **optimizador** usará los requerimientos ajustados según tu análisis de suelo.
+    Si está activado, el modelo tomará el archivo:
+    - `data/requerimientos_ajustados_por_potrero.csv` (si existe),
+    en lugar de `data/requerimientos.csv`.
 
-with st.expander("📂 Cargar datos de entrada", expanded=False):
-    pot_file = st.file_uploader("Archivo de potreros (CSV)", type=["csv"])
-    req_file = st.file_uploader("Archivo de requerimientos (CSV)", type=["csv"])
-    prod_file = st.file_uploader("Archivo de productos (CSV)", type=["csv"])
+    Si no existe el archivo ajustado, usará el normal automáticamente.
+    """)
 
-    if st.button("Guardar archivos", key="save_inputs"):
-        for uploaded, name in [(pot_file, "potreros.csv"),
-                               (req_file, "requerimientos.csv"),
-                               (prod_file, "productos.csv")]:
-            if uploaded:
-                with open(DATA_DIR / name, "wb") as f:
-                    f.write(uploaded.getbuffer())
-                st.success(f"{name} guardado correctamente ✅")
+    use_soil = st.checkbox(" Usar análisis de suelo en el solver", value=True, key="use_soil_toggle")
+
+    # Detectar archivo que se usará realmente
+    req_aj_path = DATA_DIR / "requerimientos_ajustados_por_potrero.csv"
+    req_base_path = DATA_DIR / "requerimientos.csv"
+
+    if use_soil and req_aj_path.exists():
+        st.success("El solver usará requerimientos **ajustados por potrero** ✅")
+        solver_req_path = req_aj_path
+    else:
+        st.info("El solver usará los requerimientos **base (sin ajuste)**.")
+        solver_req_path = req_base_path
+
+    # Guardar en sesión para el paso del solver
+    st.session_state["solver_req_path"] = str(solver_req_path)
+
 
 # =============================
-# Parámetros A/B
+# 5️⃣ Parámetros de optimización (Escenario A y B)
 # =============================
-colA, colB = st.columns(2)
-with colA:
-    st.markdown("#### Parámetros Escenario A")
-    nA = st.number_input("N máx A (kg/ha)", 0, 500, 300, 10, key="nA")
-    mixA = st.number_input("Mezcla máx A (kg/ha)", 0, 1000, 600, 10, key="mixA")
-    tolA = st.number_input("Tolerancia A (%)", 0.0, 10.0, 2.0, 0.5, key="tolA")
-with colB:
-    st.markdown("#### Parámetros Escenario B")
-    nB = st.number_input("N máx B (kg/ha)", 0, 500, 250, 10, key="nB")
-    mixB = st.number_input("Mezcla máx B (kg/ha)", 0, 1000, 500, 10, key="mixB")
-    tolB = st.number_input("Tolerancia B (%)", 0.0, 10.0, 1.0, 0.5, key="tolB")
+st.info("📊 Define los límites de mezcla y nitrógeno para tus escenarios A y B. Puedes probar combinaciones distintas y comparar costos más adelante.")
+
+with st.expander("6️⃣ Parámetros de optimización (Escenario A y B)⚙️", expanded=False):
+    colA, colB = st.columns(2)
+    with colA:
+        st.markdown("#### Escenario A")
+        nA = st.number_input("N máx A (kg/ha)", 0, 500, 300, 10, key="nA")
+        mixA = st.number_input("Mezcla máx A (kg/ha)", 0, 1000, 600, 10, key="mixA")
+        tolA = st.number_input("Tolerancia A (%)", 0.0, 10.0, 2.0, 0.5, key="tolA")
+    with colB:
+        st.markdown("#### Escenario B")
+        nB = st.number_input("N máx B (kg/ha)", 0, 500, 250, 10, key="nB")
+        mixB = st.number_input("Mezcla máx B (kg/ha)", 0, 1000, 500, 10, key="mixB")
+        tolB = st.number_input("Tolerancia B (%)", 0.0, 10.0, 1.0, 0.5, key="tolB")
 
 # =============================
 # Ejecutar solver
 # =============================
-def run_solver(nmax: int, mixmax: int, tol_pct: float, costo_ap_ton: int, tag: str):
+def run_solver(nmax: int, mixmax: int, tol_pct: float, costo_ap_ton: int, tag: str, req_path: Optional[Path] = None):
     csv_path = DATA_DIR / f"resultados_dosis_{tag}.csv"
     txt_path = DATA_DIR / f"_resumen_{tag}.txt"
     for p in (csv_path, txt_path):
         if p.exists():
             try: p.unlink()
             except Exception: pass
-    proc = subprocess.run(
-        [
-            sys.executable, str(SOLVER_PATH),
-            "--nmax",   str(nmax),
-            "--mixmax", str(mixmax),
-            "--tol",    str(tol_pct/100.0),
-            "--costoap",str(costo_ap_ton),
-            "--tag",    tag,
-        ],
-        capture_output=True, text=True
-    )
+
+    # --- armar args base
+    args = [
+        sys.executable, str(SOLVER_PATH),
+        "--nmax",   str(nmax),
+        "--mixmax", str(mixmax),
+        "--tol",    str(tol_pct/100.0),
+        "--costoap",str(costo_ap_ton),
+        "--tag",    tag,
+    ]
+    # --- si tenemos ruta de requerimientos, la pasamos
+    if req_path is not None:
+        args += ["--reqpath", str(req_path)]
+
+    proc = subprocess.run(args, capture_output=True, text=True)
     ok = (proc.returncode == 0) and csv_path.exists() and txt_path.exists()
     return proc, csv_path, txt_path, ok
 
-# === MAPA DE POTREROS (dibujar o cargar) ===
-import json
-import folium
-from streamlit_folium import st_folium
-from pyproj import Geod
-from shapely.geometry import shape
-GEOD = Geod(ellps="WGS84")
-POTREROS_GEOJSON = DATA_DIR / "potreros.geojson"
-POTREROS_CSV = DATA_DIR / "potreros.csv"
-
-with st.expander("🗺️ Mapa de potreros (dibujar o cargar)", expanded=False):
-    left, right = st.columns([3, 2])
-    with right:
-        st.markdown("**Base del mapa**")
-        center_lat = st.number_input("Latitud centro", value=-34.50, step=0.01, format="%.6f")
-        center_lon = st.number_input("Longitud centro", value=-71.20, step=0.01, format="%.6f")
-        zoom = st.slider("Zoom", 8, 18, 14)
-        st.markdown("**Cargar GeoJSON (opcional)**")
-        up = st.file_uploader("Subir GeoJSON de potreros", type=["geojson", "json"])
-        if up:
-            try:
-                gj = json.loads(up.read().decode("utf-8"))
-                POTREROS_GEOJSON.write_text(json.dumps(gj, ensure_ascii=False), encoding="utf-8")
-                st.success("GeoJSON cargado y guardado en data/potreros.geojson ✅")
-            except Exception as e:
-                st.error(f"Error al leer GeoJSON: {e}")
-        st.caption("Tip: si no tienes GeoJSON, dibuja tus potreros directo en el mapa.")
-    with left:
-        m = folium.Map(location=[center_lat, center_lon], zoom_start=zoom, tiles="OpenStreetMap")
-        folium.TileLayer(
-            tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-            attr="Esri WorldImagery", name="Satélite").add_to(m)
-        if POTREROS_GEOJSON.exists():
-            gj_prev = json.loads(POTREROS_GEOJSON.read_text(encoding="utf-8"))
-            folium.GeoJson(gj_prev, name="Potreros").add_to(m)
-        from folium.plugins import Draw
-        Draw(draw_options={"polyline": False, "rectangle": False, "circle": False,
-                           "circlemarker": False, "marker": False, "polygon": True},
-             edit_options={"edit": True, "remove": True}).add_to(m)
-        folium.LayerControl().add_to(m)
-        map_state = st_folium(m, width=700, height=520, returned_objects=["all_drawings"])
-
-    c1, c2 = st.columns(2)
-    with c1:
-        if st.button("💾 Guardar dibujo como GeoJSON"):
-            features = []
-            if POTREROS_GEOJSON.exists():
-                prev = json.loads(POTREROS_GEOJSON.read_text(encoding="utf-8"))
-                if prev.get("type") == "FeatureCollection":
-                    features.extend(prev.get("features", []))
-            nuevos = map_state.get("all_drawings") or []
-            for feat in nuevos:
-                geom = feat.get("geometry", {})
-                if geom and geom.get("type") == "Polygon":
-                    props = feat.get("properties") or {}
-                    props.setdefault("potrero", f"Potrero_{len(features)+1}")
-                    props.setdefault("cultivo", "SinCultivo")
-                    features.append({"type": "Feature", "properties": props, "geometry": geom})
-            if not features:
-                st.warning("No hay polígonos para guardar.")
-            else:
-                gj_new = {"type": "FeatureCollection", "features": features}
-                POTREROS_GEOJSON.write_text(json.dumps(gj_new, ensure_ascii=False), encoding="utf-8")
-                st.success("GeoJSON guardado en data/potreros.geojson ✅")
-    with c2:
-        if st.button("🧮 Calcular áreas y crear potreros.csv"):
-            if not POTREROS_GEOJSON.exists():
-                st.warning("Primero guarda un GeoJSON.")
-            else:
-                gj = json.loads(POTREROS_GEOJSON.read_text(encoding="utf-8"))
-                filas = []
-                for f in gj.get("features", []):
-                    geom = f.get("geometry", {})
-                    if not geom or geom.get("type") != "Polygon":
-                        continue
-                    poly = shape(geom)
-                    lon, lat = poly.exterior.coords.xy
-                    area_m2, _ = GEOD.polygon_area_perimeter(lon, lat)
-                    area_ha = abs(area_m2) / 10_000.0
-                    potrero = f.get("properties", {}).get("potrero", "SinNombre")
-                    cultivo = f.get("properties", {}).get("cultivo", "SinCultivo")
-                    filas.append({"potrero": potrero, "cultivo": cultivo, "superficie_ha": round(area_ha, 3)})
-                if not filas:
-                    st.warning("No encontré polígonos válidos.")
-                else:
-                    dfpot = pd.DataFrame(filas)
-                    try:
-                        reqs = pd.read_csv(DATA_DIR / "requerimientos.csv", sep=None, engine="python")
-                        cultivos_posibles = sorted(reqs["cultivo"].unique().tolist())
-                    except Exception:
-                        cultivos_posibles = []
-                    st.markdown("### ✏️ Editar cultivos por potrero")
-                    if cultivos_posibles:
-                        dfpot["cultivo"] = dfpot["cultivo"].apply(
-                            lambda x: x if x in cultivos_posibles else (cultivos_posibles[0] if cultivos_posibles else x)
-                        )
-                        dfpot = st.data_editor(
-                            dfpot, num_rows="dynamic",
-                            column_config={"cultivo": st.column_config.SelectboxColumn(options=cultivos_posibles)},
-                            use_container_width=True
-                        )
-                    else:
-                        st.dataframe(dfpot, use_container_width=True)
-                    dfpot.to_csv(POTREROS_CSV, index=False, encoding="utf-8")
-                    st.success("✅ Generado/actualizado data/potreros.csv listo para el solver")
 
 # =============================
-# BOTÓN: Ejecutar A/B
+# 6️⃣ Ejecutar escenarios A y B
 # =============================
-if st.button("🚜 Ejecutar escenarios A y B", key="run_ab"):
-    st.session_state["already_rendered"] = True  # para no duplicar abajo
-    with st.spinner("Ejecutando optimizaciones A y B..."):
-        resA, csvA, txtA, okA = run_solver(nA, mixA, tolA, 0, "A")
-        resB, csvB, txtB, okB = run_solver(nB, mixB, tolB, 0, "B")
+st.info("🚜 Aquí el sistema hace su magia: calcula las mezclas óptimas, muestra costos y genera el resumen agronómico. Solo presiona ejecutar y observa los resultados.")
 
-    if not okA and not okB:
-        st.warning("Ninguno de los escenarios terminó bien. Revisa límites y datos.")
-        st.caption("Logs A:"); st.code(resA.stderr or resA.stdout or "sin salida")
-        st.caption("Logs B:"); st.code(resB.stderr or resB.stdout or "sin salida")
-        st.stop()
-    elif not okA:
-        st.warning("El escenario A falló. Revisemos límites y datos.")
-        st.caption("Logs A:"); st.code(resA.stderr or resA.stdout or "sin salida")
-    elif not okB:
-        st.warning("El escenario B falló. Revisemos límites y datos.")
-        st.caption("Logs B:"); st.code(resB.stderr or resB.stdout or "sin salida")
-    else:
-        st.success("Optimización completada ✅")
+with st.expander("7️⃣ Ejecutar escenarios A y B 🚜", expanded=False):
+    if st.button("🚜 Ejecutar escenarios A y B", key="run_ab"):
+        st.session_state["already_rendered"] = True
+        # 👉 NUEVO: lee la ruta decidida por el toggle (o usa base si no está)
+        req_path = Path(st.session_state.get("solver_req_path", str(DATA_DIR / "requerimientos.csv")))
 
-    # Cargar costos
-    costoA = costo_total_desde_txt(txtA) if okA else None
-    costoB = costo_total_desde_txt(txtB) if okB else None
+        with st.spinner("Ejecutando optimizaciones A y B..."):
+            # 👉 NUEVO: pasa req_path a ambos escenarios
+            resA, csvA, txtA, okA = run_solver(nA, mixA, tolA, 0, "A", req_path=req_path)
+            resB, csvB, txtB, okB = run_solver(nB, mixB, tolB, 0, "B", req_path=req_path)
 
-    # Métricas
-    metros = []
-    if costoA is not None: metros.append(("Costo A", costoA))
-    if costoB is not None: metros.append(("Costo B", costoB))
-    if (costoA is not None) and (costoB is not None):
-        dif_cost = costoB - costoA
-        metros.append(("Diferencia (B - A)", dif_cost))
-    if metros:
-        cols_m = st.columns(len(metros))
-        for i, (lab, val) in enumerate(metros):
-            cols_m[i].metric(lab, formato_clp(val))
 
-    # Texto corto
-    if (costoA is not None) and (costoB is not None):
-        dif_cost = costoB - costoA
-        st.markdown(
-            f"""
+        if not okA and not okB:
+            st.warning("Ninguno de los escenarios terminó bien. Revisa límites y datos.")
+            st.caption("Logs A:"); st.code(resA.stderr or resA.stdout or "sin salida")
+            st.caption("Logs B:"); st.code(resB.stderr or resB.stdout or "sin salida")
+            st.stop()
+        elif not okA:
+            st.warning("El escenario A falló. Revisemos límites y datos.")
+            st.caption("Logs A:"); st.code(resA.stderr or resA.stdout or "sin salida")
+        elif not okB:
+            st.warning("El escenario B falló. Revisemos límites y datos.")
+            st.caption("Logs B:"); st.code(resB.stderr or resB.stdout or "sin salida")
+        else:
+            st.success("Optimización completada ✅")
+
+        costoA = costo_total_desde_txt(txtA) if okA else None
+        costoB = costo_total_desde_txt(txtB) if okB else None
+
+        metros = []
+        if costoA is not None: metros.append(("Costo A", costoA))
+        if costoB is not None: metros.append(("Costo B", costoB))
+        if (costoA is not None) and (costoB is not None):
+            dif_cost = costoB - costoA
+            metros.append(("Diferencia (B - A)", dif_cost))
+        if metros:
+            cols_m = st.columns(len(metros))
+            for i, (lab, val) in enumerate(metros):
+                cols_m[i].metric(lab, formato_clp(val))
+
+        if (costoA is not None) and (costoB is not None):
+            dif_cost = costoB - costoA
+            st.markdown(
+                f"""
 **¿Cómo leerlo?**  
 - **A:** {formato_clp(costoA)}  ·  **B:** {formato_clp(costoB)}  
 - Diferencia (**B − A**): **{formato_clp(dif_cost)}** → {'sube' if dif_cost>0 else 'baja' if dif_cost<0 else 'no cambia'} con B.  
 Si está **positivo**, B es **más caro**; si está **negativo**, B es **más barato**.
-            """
-        )
+                """
+            )
 
-    # Guardar TODO en estado
-    st.session_state["last_run"] = {
-        "okA": okA, "okB": okB,
-        "csvA": str(csvA) if okA else None,
-        "txtA": str(txtA) if okA else None,
-        "csvB": str(csvB) if okB else None,
-        "txtB": str(txtB) if okB else None,
-        "costoA": costoA if okA else None,
-        "costoB": costoB if okB else None,
-        "mixA": mixA, "mixB": mixB, "nA": nA, "nB": nB, "tolA": tolA, "tolB": tolB,
-    }
+        st.session_state["last_run"] = {
+            "okA": okA, "okB": okB,
+            "csvA": str(csvA) if okA else None,
+            "txtA": str(txtA) if okA else None,
+            "csvB": str(csvB) if okB else None,
+            "txtB": str(txtB) if okB else None,
+            "costoA": costoA if okA else None,
+            "costoB": costoB if okB else None,
+            "mixA": st.session_state["mixA"], "mixB": st.session_state["mixB"],
+            "nA": st.session_state["nA"], "nB": st.session_state["nB"],
+            "tolA": st.session_state["tolA"], "tolB": st.session_state["tolB"],
+        }
 
-    # ===== Resumen agronómico (inmediato)
-    def resumen_agronomico(tag, csv_path, mix_lim):
-        if not csv_path or not csv_path.exists():
-            return
-        st.markdown(f"### Escenario {tag}")
-        df = pd.read_csv(csv_path)
-        prods = pd.read_csv(DATA_DIR / "productos.csv", sep=None, engine="python")
-        df = df.merge(prods[["producto","N_pct","P2O5_pct","K2O_pct"]], on="producto", how="left")
-        df["N_aporte"] = df["kg_ha"] * df["N_pct"] / 100
-        df["P_aporte"] = df["kg_ha"] * df["P2O5_pct"] / 100
-        df["K_aporte"] = df["kg_ha"] * df["K2O_pct"] / 100
-        resumen = (df.groupby("producto")[["kg_ha","N_aporte","P_aporte","K_aporte"]]
-                     .sum()
-                     .assign(**{"% mezcla": lambda x: 100*x["kg_ha"]/x["kg_ha"].sum()})
-                     .round(2))
-        st.dataframe(resumen, use_container_width=True)
-        predom = resumen["% mezcla"].idxmax()
-        tiene_N = resumen["N_aporte"].sum() > 0.5
-        tiene_P = resumen["P_aporte"].sum() > 0.5
-        tiene_K = resumen["K_aporte"].sum() > 0.5
-        texto = f"La mezcla del escenario {tag} tiene **predominio de {predom}**"
-        if   tiene_N and tiene_P: texto += ", por su doble aporte de N y P₂O₅"
-        elif tiene_N:             texto += ", como fuente principal de N"
-        elif tiene_P:             texto += ", como fuente principal de P₂O₅"
-        elif tiene_K:             texto += ", aportando K₂O"
-        texto += "."
-        if not tiene_K:
-            texto += " No se usa KCl ni otras fuentes de potasio porque K₂O no es requerido."
-        total_mix = resumen["kg_ha"].sum()
-        if mix_lim is not None:
-            texto += " La mezcla total "
-            if total_mix < 0.9*mix_lim: texto += "queda bajo el límite de mezcla (buena eficiencia)."
-            elif total_mix <= mix_lim:  texto += "llega cerca del límite de mezcla (ajuste fino)."
-            else:                       texto += "supera el límite de mezcla; revisa parámetros o dosis mínimas."
-        st.markdown(f"> 🧩 {texto}")
+        # ===== Resumen agronómico (inmediato)
+        def resumen_agronomico(tag, csv_path, mix_lim):
+            if not csv_path or not csv_path.exists():
+                return
+            st.markdown(f"### Escenario {tag}")
+            df = pd.read_csv(csv_path)
+            prods = pd.read_csv(DATA_DIR / "productos.csv", sep=None, engine="python")
+            df = df.merge(prods[["producto","N_pct","P2O5_pct","K2O_pct"]], on="producto", how="left")
+            df["N_aporte"] = df["kg_ha"] * df["N_pct"] / 100
+            df["P_aporte"] = df["kg_ha"] * df["P2O5_pct"] / 100
+            df["K_aporte"] = df["kg_ha"] * df["K2O_pct"] / 100
+            resumen = (df.groupby("producto")[["kg_ha","N_aporte","P_aporte","K_aporte"]]
+                         .sum()
+                         .assign(**{"% mezcla": lambda x: 100*x["kg_ha"]/x["kg_ha"].sum()})
+                         .round(2))
+            st.dataframe(resumen, use_container_width=True)
+            predom = resumen["% mezcla"].idxmax()
+            tiene_N = resumen["N_aporte"].sum() > 0.5
+            tiene_P = resumen["P_aporte"].sum() > 0.5
+            tiene_K = resumen["K_aporte"].sum() > 0.5
+            texto = f"La mezcla del escenario {tag} tiene **predominio de {predom}**"
+            if   tiene_N and tiene_P: texto += ", por su doble aporte de N y P₂O₅"
+            elif tiene_N:             texto += ", como fuente principal de N"
+            elif tiene_P:             texto += ", como fuente principal de P₂O₅"
+            elif tiene_K:             texto += ", aportando K₂O"
+            texto += "."
+            if not tiene_K:
+                texto += " No se usa KCl ni otras fuentes de potasio porque K₂O no es requerido."
+            total_mix = resumen["kg_ha"].sum()
+            if mix_lim is not None:
+                texto += " La mezcla total "
+                if total_mix < 0.9*mix_lim: texto += "queda bajo el límite de mezcla (buena eficiencia)."
+                elif total_mix <= mix_lim:  texto += "llega cerca del límite de mezcla (ajuste fino)."
+                else:                       texto += "supera el límite de mezcla; revisa parámetros o dosis mínimas."
+            st.markdown(f"> 🧩 {texto}")
 
-    st.markdown("## 🌾 Interpretación agronómica de la mezcla")
-    if okA: resumen_agronomico("A", csvA, mixA)
-    if okB: resumen_agronomico("B", csvB, mixB)
+        st.markdown("## 🌾 Interpretación agronómica de la mezcla")
+        if okA: resumen_agronomico("A", csvA, st.session_state["mixA"])
+        if okB: resumen_agronomico("B", csvB, st.session_state["mixB"])
 
-    # ===== Comparativos / Reportes SOLO si existen A y B
-    if okA and okB:
-        dfA = pd.read_csv(csvA); dfA["escenario"] = "A"
-        dfB = pd.read_csv(csvB); dfB["escenario"] = "B"
-        dfAB = pd.concat([dfA, dfB], ignore_index=True)
+        # ===== Comparativos / Reportes SOLO si existen A y B
+        if okA and okB:
+            dfA = pd.read_csv(csvA); dfA["escenario"] = "A"
+            dfB = pd.read_csv(csvB); dfB["escenario"] = "B"
+            dfAB = pd.concat([dfA, dfB], ignore_index=True)
 
-        st.subheader("📊 Comparación de dosis (A vs B)")
-        st.dataframe(dfAB, use_container_width=True)
+            st.subheader("📊 Comparación de dosis (A vs B)")
+            st.dataframe(dfAB, use_container_width=True)
 
-        st.subheader("📈 Total kg/ha por potrero (A vs B)")
-        tot_por_pot = (dfAB.groupby(["potrero","escenario"])["kg_ha"]
-                          .sum().unstack("escenario").fillna(0).sort_index())
-        st.bar_chart(tot_por_pot)
+            st.subheader("📈 Total kg/ha por potrero (A vs B)")
+            tot_por_pot = (dfAB.groupby(["potrero","escenario"])["kg_ha"]
+                              .sum().unstack("escenario").fillna(0).sort_index())
+            st.bar_chart(tot_por_pot)
 
-        dif_pot = (tot_por_pot.get("B",0) - tot_por_pot.get("A",0)).rename("dif")
-        pot_mayor_sube = dif_pot.idxmax() if len(dif_pot) else None
-        pot_mayor_baja = dif_pot.idxmin() if len(dif_pot) else None
+            dif_pot = (tot_por_pot.get("B",0) - tot_por_pot.get("A",0)).rename("dif")
+            pot_mayor_sube = dif_pot.idxmax() if len(dif_pot) else None
+            pot_mayor_baja = dif_pot.idxmin() if len(dif_pot) else None
 
-        st.subheader("📉 Diferencia total (B − A) por potrero")
-        st.bar_chart(dif_pot)
+            st.subheader("📉 Diferencia total (B − A) por potrero")
+            st.bar_chart(dif_pot)
 
-        pot_sel = st.selectbox("🔎 Comparar mezcla por producto en potrero:", sorted(dfAB["potrero"].unique()))
-        mix_pot = (dfAB[dfAB["potrero"] == pot_sel]
-                      .pivot_table(index="producto", columns="escenario", values="kg_ha", aggfunc="sum")
-                      .fillna(0).sort_index())
-        st.subheader(f"🧪 Mezcla en {pot_sel} (kg/ha)")
-        st.bar_chart(mix_pot)
+            pot_sel = st.selectbox("🔎 Comparar mezcla por producto en potrero:", sorted(dfAB["potrero"].unique()))
+            mix_pot = (dfAB[dfAB["potrero"] == pot_sel]
+                          .pivot_table(index="producto", columns="escenario", values="kg_ha", aggfunc="sum")
+                          .fillna(0).sort_index())
+            st.subheader(f"🧪 Mezcla en {pot_sel} (kg/ha)")
+            st.bar_chart(mix_pot)
 
-        st.subheader(f"📊 Diferencia por producto en {pot_sel} (B − A)")
-        diff_prod = (mix_pot.get("B",0) - mix_pot.get("A",0)).rename("Diferencia (kg/ha)")
-        st.bar_chart(diff_prod)
+            st.subheader(f"📊 Diferencia por producto en {pot_sel} (B − A)")
+            diff_prod = (mix_pot.get("B",0) - mix_pot.get("A",0)).rename("Diferencia (kg/ha)")
+            st.bar_chart(diff_prod)
 
-        # Descarga CSV comparación
-        st.download_button(
-            "📥 Descargar comparación A/B (CSV)",
-            data=pd.concat([dfA, dfB]).to_csv(index=False).encode("utf-8"),
-            file_name="comparacion_AB.csv",
-            mime="text/csv",
-            key="dl_ab",
-        )
+            st.download_button(
+                "📥 Descargar comparación A/B (CSV)",
+                data=pd.concat([dfA, dfB]).to_csv(index=False).encode("utf-8"),
+                file_name="comparacion_AB.csv",
+                mime="text/csv",
+                key="dl_ab",
+            )
 
-        # ===== Reporte “en chileno” (MD + PDF) — DENTRO del if okA and okB
-        dif_cost = (costoB - costoA)
-        sube_txt = f"{dif_pot.idxmax()} (+{dif_pot.max():.1f} kg/ha)" if len(dif_pot) else "—"
-        baja_txt = f"{dif_pot.idxmin()} ({dif_pot.min():.1f} kg/ha)" if len(dif_pot) else "—"
-        p_up = diff_prod.idxmax() if len(diff_prod)>0 else "—"
-        p_dn = diff_prod.idxmin() if len(diff_prod)>0 else "—"
+            dif_cost = (costoB - costoA)
+            sube_txt = f"{dif_pot.idxmax()} (+{dif_pot.max():.1f} kg/ha)" if len(dif_pot) else "—"
+            baja_txt = f"{dif_pot.idxmin()} ({dif_pot.min():.1f} kg/ha)" if len(dif_pot) else "—"
+            p_up = diff_prod.idxmax() if len(diff_prod)>0 else "—"
+            p_dn = diff_prod.idxmin() if len(diff_prod)>0 else "—"
 
-        resumen_txt = f"""
+            resumen_txt = f"""
 # 🧾 Informe – Comparación A y B
 
 ## 💰 Costo total
@@ -786,36 +1093,36 @@ Si B cuesta más, apretaste límites (N máx o mezcla) y el modelo usa productos
 Si B es más barato, diste holgura (tolerancia/N máx) y encontró una mezcla más eficiente.
 
 _Desarrollado por BData 🌾 – PuLP + Streamlit_
-        """.strip()
+            """.strip()
 
-        st.download_button(
-            "📥 Descargar reporte en chileno (Markdown)",
-            data=resumen_txt.encode("utf-8"),
-            file_name="reporte_en_chileno.md",
-            mime="text/markdown",
-            key="dl_chileno",
-        )
+            st.download_button(
+                "📥 Descargar reporte en chileno (Markdown)",
+                data=resumen_txt.encode("utf-8"),
+                file_name="reporte_en_chileno.md",
+                mime="text/markdown",
+                key="dl_chileno",
+            )
 
-        logo_path = DATA_DIR / "logo-bdata.png"
-        dfAB_head = dfAB.head(10).copy()
-        pdf_bytes = build_pdf_reporte_chileno(
-            logo_path=logo_path if logo_path.exists() else None,
-            costoA=costoA, costoB=costoB, dif_cost=dif_cost,
-            tot_por_pot=tot_por_pot,
-            pot_mayor_sube=pot_mayor_sube, pot_mayor_baja=pot_mayor_baja,
-            pot_sel=pot_sel, diff_prod=diff_prod,
-            dfAB_head=dfAB_head,
-        )
-        st.download_button(
-            "📥 Descargar informe fertilización BData (PDF)",
-            data=pdf_bytes,
-            file_name="informe_fertilizacion_BData.pdf",
-            mime="application/pdf",
-            key="dl_pdf_chileno",
-        )
+            logo_path = DATA_DIR / "logo-bdata.png"
+            dfAB_head = dfAB.head(10).copy()
+            pdf_bytes = build_pdf_reporte_chileno(
+                logo_path=logo_path if logo_path.exists() else None,
+                costoA=costoA, costoB=costoB, dif_cost=dif_cost,
+                tot_por_pot=tot_por_pot,
+                pot_mayor_sube=pot_mayor_sube, pot_mayor_baja=pot_mayor_baja,
+                pot_sel=pot_sel, diff_prod=diff_prod,
+                dfAB_head=dfAB_head,
+            )
+            st.download_button(
+                "📥 Descargar informe fertilización BData (PDF)",
+                data=pdf_bytes,
+                file_name="informe_fertilizacion_BData.pdf",
+                mime="application/pdf",
+                key="dl_pdf_chileno",
+            )
 
 # =============================
-# Render persistente (último resultado) — evita duplicar si ya renderizamos
+# Render persistente (último resultado) — igual que antes
 # =============================
 from pathlib import Path as _Path
 ctx = st.session_state.get("last_run", {})
@@ -903,6 +1210,116 @@ if ctx and (ctx.get("okA") or ctx.get("okB")) and not st.session_state["already_
             file_name="comparacion_AB.csv",
             mime="text/csv",
             key="dl_ab_persist",
+        )
+
+# =============================
+# 7️⃣ Exportar reportes (todo junto)
+# =============================
+st.info("🧾 Descarga tus resultados en formatos CSV, Markdown o PDF. El informe **en chileno** explica todo en lenguaje simple y directo para tus registros o presentaciones.")
+
+with st.expander("8️⃣ Exportar reportes", expanded=False):
+    ctx = st.session_state.get("last_run", {}) or {}
+    okA_ = bool(ctx.get("okA")); okB_ = bool(ctx.get("okB"))
+    csvA_path = Path(ctx["csvA"]) if okA_ and ctx.get("csvA") else None
+    csvB_path = Path(ctx["csvB"]) if okB_ and ctx.get("csvB") else None
+    costoA_ = ctx.get("costoA"); costoB_ = ctx.get("costoB")
+
+    if not (okA_ and okB_ and csvA_path and csvB_path and csvA_path.exists() and csvB_path.exists()):
+        st.info("Corre ambos escenarios (A y B) para habilitar las exportaciones.")
+    else:
+        # Cargar datos desde disco para no depender del render previo
+        dfA_ = pd.read_csv(csvA_path); dfA_["escenario"] = "A"
+        dfB_ = pd.read_csv(csvB_path); dfB_["escenario"] = "B"
+        dfAB_ = pd.concat([dfA_, dfB_], ignore_index=True)
+
+        # Selector de potrero para los informes
+        potreros_disp = sorted(dfAB_["potrero"].unique())
+        pot_sel7 = st.selectbox("Potrero a destacar en el informe:", potreros_disp, key="pot_sel_export")
+
+        # Totales y diferencias por potrero
+        tot_por_pot_7 = (dfAB_.groupby(["potrero","escenario"])["kg_ha"]
+                            .sum().unstack("escenario").fillna(0).sort_index())
+        dif_pot_7 = (tot_por_pot_7.get("B",0) - tot_por_pot_7.get("A",0)).rename("dif")
+
+        # Diferencias por producto en potrero elegido
+        mix_pot_7 = (dfAB_[dfAB_["potrero"] == pot_sel7]
+                        .pivot_table(index="producto", columns="escenario", values="kg_ha", aggfunc="sum")
+                        .fillna(0).sort_index())
+        diff_prod_7 = (mix_pot_7.get("B",0) - mix_pot_7.get("A",0)).rename("Diferencia (kg/ha)")
+
+        # Botón 1: CSV comparación A/B
+        st.download_button(
+            "📥 Descargar comparación A/B (CSV)",
+            data=dfAB_.to_csv(index=False).encode("utf-8"),
+            file_name="comparacion_AB.csv",
+            mime="text/csv",
+            key="dl_ab_step7",
+        )
+
+        # Preparar textos comunes (robustos si faltan costos)
+        if isinstance(costoA_, (int,float)) and isinstance(costoB_, (int,float)):
+            dif_cost_7 = costoB_ - costoA_
+            costoA_txt = formato_clp(costoA_)
+            costoB_txt = formato_clp(costoB_)
+            dif_cost_txt = formato_clp(dif_cost_7)
+            caridad = 'B más caro 💸' if dif_cost_7>0 else 'B más barato 💰' if dif_cost_7<0 else 'igual 🤝'
+        else:
+            dif_cost_7 = 0
+            costoA_txt = "s/d"
+            costoB_txt = "s/d"
+            dif_cost_txt = "s/d"
+            caridad = "—"
+
+        sube_txt_7 = f"{dif_pot_7.idxmax()} (+{dif_pot_7.max():.1f} kg/ha)" if len(dif_pot_7) else "—"
+        baja_txt_7 = f"{dif_pot_7.idxmin()} ({dif_pot_7.min():.1f} kg/ha)" if len(dif_pot_7) else "—"
+        p_up_7 = diff_prod_7.idxmax() if len(diff_prod_7)>0 else "—"
+        p_dn_7 = diff_prod_7.idxmin() if len(diff_prod_7)>0 else "—"
+
+        # Botón 2: Reporte en chileno (Markdown)
+        resumen_txt_7 = f"""
+# 🧾 Informe – Comparación A y B
+
+## 💰 Costo total
+A: **{costoA_txt}** · B: **{costoB_txt}** · Diferencia: **{dif_cost_txt}** → {caridad}.
+
+## 🌾 Potreros
+Mayor aumento: **{sube_txt_7}** · Mayor baja: **{baja_txt_7}**.
+
+## 🧪 Mezclas y productos
+En **{pot_sel7}**: sube más **{p_up_7 if len(diff_prod_7)>0 else '—'}**, baja más **{p_dn_7 if len(diff_prod_7)>0 else '—'}**.
+
+## 🧠 Interpretación
+Si B cuesta más, apretaste límites (N máx o mezcla) y el modelo usa productos más concentrados.
+Si B es más barato, diste holgura (tolerancia/N máx) y encontró una mezcla más eficiente.
+
+_Desarrollado por BData 🌾 – PuLP + Streamlit_
+        """.strip()
+
+        st.download_button(
+            "📥 Descargar reporte en chileno (Markdown)",
+            data=resumen_txt_7.encode("utf-8"),
+            file_name="reporte_en_chileno.md",
+            mime="text/markdown",
+            key="dl_md_step7",
+        )
+
+        # Botón 3: Reporte PDF (usa la misma función ya definida)
+        logo_path7 = DATA_DIR / "logo-bdata.png"
+        pdf_bytes7 = build_pdf_reporte_chileno(
+            logo_path=logo_path7 if logo_path7.exists() else None,
+            costoA=(costoA_ or 0), costoB=(costoB_ or 0), dif_cost=(dif_cost_7 or 0),
+            tot_por_pot=tot_por_pot_7,
+            pot_mayor_sube=(dif_pot_7.idxmax() if len(dif_pot_7) else None),
+            pot_mayor_baja=(dif_pot_7.idxmin() if len(dif_pot_7) else None),
+            pot_sel=pot_sel7, diff_prod=diff_prod_7,
+            dfAB_head=dfAB_.head(10).copy(),
+        )
+        st.download_button(
+            "📥 Descargar informe fertilización BData (PDF)",
+            data=pdf_bytes7,
+            file_name="informe_fertilizacion_BData.pdf",
+            mime="application/pdf",
+            key="dl_pdf_step7",
         )
 
 # Pie
